@@ -1,0 +1,38 @@
+﻿using System.IO;
+using System.Windows;
+using EpubRead.Services;
+
+namespace EpubRead;
+
+public partial class App : Application
+{
+    public static string AppDataDir { get; private set; } = string.Empty;
+    public static string DbPath { get; private set; } = string.Empty;
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        // 初始化应用数据目录
+        AppDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "EpubRead");
+        Directory.CreateDirectory(AppDataDir);
+
+        // 封面缓存目录
+        var coversDir = Path.Combine(AppDataDir, "covers");
+        Directory.CreateDirectory(coversDir);
+
+        // 初始化 SQLite 数据库
+        DbPath = Path.Combine(AppDataDir, "epubread.db");
+        var bookshelfService = new BookshelfService(DbPath);
+        bookshelfService.InitializeDatabase();
+
+        // 创建服务
+        var epubParser = new EpubParser();
+
+        // 启动主窗口
+        var mainWindow = new MainWindow(bookshelfService, epubParser, AppDataDir);
+        mainWindow.Show();
+    }
+}
