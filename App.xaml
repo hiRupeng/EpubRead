@@ -11,7 +11,7 @@
         <Style x:Key="ImportButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#4A90D9" />
             <Setter Property="Foreground" Value="#FFFFFF" />
-            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontFamily" Value="Microsoft YaHei" />
             <Setter Property="Cursor" Value="Hand" />
@@ -20,7 +20,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="10" Padding="16,8">
+                                CornerRadius="8" Padding="12,6">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>

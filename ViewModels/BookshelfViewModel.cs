@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
-using System.Windows.Input;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EpubRead.Models;
@@ -15,8 +16,31 @@ public partial class BookshelfViewModel : ObservableObject
     private readonly BookshelfService _bookshelfService;
     private readonly EpubParser _epubParser;
     private readonly string _coversDir;
+    private ICollectionView? _booksView;
 
     public ObservableCollection<Book> Books { get; } = [];
+
+    /// <summary>
+    /// 搜索文本，实时过滤书架
+    /// </summary>
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    /// <summary>
+    /// 过滤后的书架视图，供 UI 绑定
+    /// </summary>
+    public ICollectionView? BooksView
+    {
+        get
+        {
+            if (_booksView == null)
+            {
+                _booksView = CollectionViewSource.GetDefaultView(Books);
+                _booksView.Filter = FilterBook;
+            }
+            return _booksView;
+        }
+    }
 
     public BookshelfViewModel(BookshelfService bookshelfService, EpubParser epubParser, string appDataDir)
     {
@@ -29,12 +53,34 @@ public partial class BookshelfViewModel : ObservableObject
         LoadBooks();
     }
 
+    /// <summary>
+    /// 搜索文本变化时刷新过滤
+    /// </summary>
+    partial void OnSearchTextChanged(string value)
+    {
+        BooksView?.Refresh();
+    }
+
+    private bool FilterBook(object obj)
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+            return true;
+
+        if (obj is not Book book)
+            return false;
+
+        var keyword = SearchText.Trim();
+        return book.Title.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || book.Author.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void LoadBooks()
     {
         Books.Clear();
         var books = _bookshelfService.GetAllBooks();
         foreach (var book in books)
             Books.Add(book);
+        BooksView?.Refresh();
     }
 
     [RelayCommand]
@@ -49,7 +95,15 @@ public partial class BookshelfViewModel : ObservableObject
 
         if (dialog.ShowDialog() != true) return;
 
-        foreach (var filePath in dialog.FileNames)
+        ImportFiles(dialog.FileNames);
+    }
+
+    /// <summary>
+    /// 批量导入 EPUB 文件（供拖拽/文件夹导入/文件对话框共用）
+    /// </summary>
+    public void ImportFiles(IEnumerable<string> filePaths)
+    {
+        foreach (var filePath in filePaths)
         {
             try
             {
@@ -85,12 +139,15 @@ public partial class BookshelfViewModel : ObservableObject
                 };
 
                 _bookshelfService.AddBook(book);
-                Books.Insert(0, book);
+
+                // Dispatch to UI thread for collection update
+                Application.Current.Dispatcher.Invoke(() => Books.Insert(0, book));
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"导入失败：{Path.GetFileName(filePath)}\n{ex.Message}", "导入错误",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                Application.Current.Dispatcher.Invoke(() =>
+                    MessageBox.Show($"导入失败：{Path.GetFileName(filePath)}\n{ex.Message}", "导入错误",
+                        MessageBoxButton.OK, MessageBoxImage.Warning));
             }
         }
     }
@@ -108,6 +165,33 @@ public partial class BookshelfViewModel : ObservableObject
 
         _bookshelfService.RemoveBook(book.Id, _coversDir);
         Books.Remove(book);
+    }
+
+    [RelayCommand]
+    private void ImportFolder()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "选择包含 EPUB 文件的文件夹"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        var folderPath = dialog.FolderName;
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath)) return;
+
+        // 递归搜索所有 .epub 文件
+        var epubFiles = Directory.EnumerateFiles(
+            folderPath, "*.epub", SearchOption.AllDirectories).ToList();
+
+        if (epubFiles.Count == 0)
+        {
+            MessageBox.Show("所选文件夹中未发现 EPUB 文件。", "导入文件夹",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        ImportFiles(epubFiles);
     }
 
     public event EventHandler<Book>? OpenBookRequested;

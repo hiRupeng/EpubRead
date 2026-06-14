@@ -151,7 +151,7 @@ public class EpubParser
     {
         var chapters = new List<Chapter>();
 
-        // 尝试解析 NCX 目录
+        // 1. 尝试解析 NCX 目录
         var ncxHref = manifest.Values
             .FirstOrDefault(v => v.EndsWith(".ncx", StringComparison.OrdinalIgnoreCase));
         if (ncxHref != null)
@@ -159,7 +159,13 @@ public class EpubParser
             chapters = ParseNcx(archive, basePath + ncxHref, basePath);
         }
 
-        // 如果 NCX 解析无结果，用 spine 顺序作为 fallback
+        // 2. 如果 NCX 无结果，尝试解析 EPUB 3 HTML NAV 目录
+        if (chapters.Count == 0)
+        {
+            chapters = ParseNavHtml(archive, basePath, manifest);
+        }
+
+        // 3. 如果都无结果，用 spine 顺序作为 fallback
         if (chapters.Count == 0)
         {
             for (int i = 0; i < spine.Count; i++)
@@ -206,18 +212,113 @@ public class EpubParser
                 if (href.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
                     href = href[basePath.Length..];
 
-                // 去掉片段标识符 (#xxx)
+                // 分离 #fragment 锚点
+                string? anchor = null;
                 var hashIndex = href.IndexOf('#');
                 if (hashIndex >= 0)
+                {
+                    anchor = href[(hashIndex + 1)..];
                     href = href[..hashIndex];
+                }
 
                 chapters.Add(new Chapter
                 {
                     Title = label,
                     Href = href,
+                    Anchor = anchor,
                     Order = order++
                 });
             }
+        }
+
+        return chapters;
+    }
+
+    /// <summary>
+    /// 解析 EPUB 3 HTML NAV 目录（nav.xhtml 中的 &lt;nav epub:type="toc"&gt;）
+    /// </summary>
+    private static List<Chapter> ParseNavHtml(ZipArchive archive, string basePath,
+        Dictionary<string, string> manifest)
+    {
+        var chapters = new List<Chapter>();
+
+        // 查找 nav.xhtml 文件
+        var navHref = manifest.Values
+            .FirstOrDefault(v => v.EndsWith("nav.xhtml", StringComparison.OrdinalIgnoreCase)
+                              || v.EndsWith("nav.html", StringComparison.OrdinalIgnoreCase));
+        if (navHref == null) return chapters;
+
+        var entry = archive.GetEntry(basePath + navHref);
+        if (entry == null) return chapters;
+
+        try
+        {
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            var html = reader.ReadToEnd();
+
+            // 使用 XHTML 解析
+            var doc = XDocument.Parse(html);
+            XNamespace xhtml = "http://www.w3.org/1999/xhtml";
+
+            // 查找 epub:type="toc" 的 nav 元素
+            var navElement = doc.Descendants(xhtml + "nav")
+                .FirstOrDefault(n => n.Attribute("epub:type")?.Value == "toc"
+                                  || n.Attribute("type")?.Value == "toc");
+
+            if (navElement == null) return chapters;
+
+            // 提取所有 li > a
+            int order = 0;
+            foreach (var link in navElement.Descendants(xhtml + "a"))
+            {
+                var label = link.Value?.Trim();
+                var href = link.Attribute("href")?.Value;
+
+                if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(href))
+                {
+                    // 如果 href 相对于 nav.xhtml 位置，调整
+                    if (!href.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var navDir = Path.GetDirectoryName(navHref)?.Replace('\\', '/');
+                        if (!string.IsNullOrEmpty(navDir))
+                            navDir += '/';
+                        else
+                            navDir = string.Empty;
+
+                        href = navDir + href;
+                    }
+
+                    // 分离 #fragment
+                    string? anchor = null;
+                    var hashIndex = href.IndexOf('#');
+                    if (hashIndex >= 0)
+                    {
+                        anchor = href[(hashIndex + 1)..];
+                        href = href[..hashIndex];
+                    }
+
+                    // 去掉 basePath 前缀
+                    if (href.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+                        href = href[basePath.Length..];
+
+                    // 去重：跳过与已有章节相同 href 的条目
+                    if (chapters.Any(c => c.Href == href && c.Anchor == anchor))
+                        continue;
+
+                    chapters.Add(new Chapter
+                    {
+                        Title = label,
+                        Href = href,
+                        Anchor = anchor,
+                        Order = order++
+                    });
+                }
+            }
+        }
+        catch
+        {
+            // HTML 解析失败，忽略
         }
 
         return chapters;

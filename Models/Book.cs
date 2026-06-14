@@ -11,4 +11,10 @@ public class Book
     public string FilePath { get; set; } = string.Empty;
     public string? CoverPath { get; set; }
     public DateTime ImportDate { get; set; } = DateTime.Now;
+    public int LastReadChapterIndex { get; set; } = -1;
+    public int TotalChapters { get; set; }
+    public double ReadProgressPercent =>
+        TotalChapters > 0 && LastReadChapterIndex >= 0
+            ? Math.Round((double)(LastReadChapterIndex + 1) / TotalChapters * 100, 1)
+            : 0;
 }

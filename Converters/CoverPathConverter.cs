@@ -24,7 +24,7 @@ public class CoverPathConverter : IValueConverter
                 bitmap.BeginInit();
                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
                 bitmap.UriSource = new Uri(path, UriKind.Absolute);
-                bitmap.DecodePixelWidth = 200;
+                bitmap.DecodePixelWidth = 360;
                 bitmap.EndInit();
                 bitmap.Freeze();
                 return bitmap;
@@ -58,6 +58,24 @@ public class NullToVisibilityConverter : IValueConverter
         return invert
             ? (isEmpty ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed)
             : (isEmpty ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// 阅读进度百分比 (0-100) → Visibility 转换器，进度为 0 时隐藏
+/// </summary>
+public class ProgressToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is double percent && percent > 0)
+            return System.Windows.Visibility.Visible;
+        return System.Windows.Visibility.Collapsed;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

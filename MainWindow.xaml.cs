@@ -1,4 +1,5 @@
-﻿using System.Windows;
+using System.Windows;
+using System.Windows.Input;
 using EpubRead.Models;
 using EpubRead.Services;
 using EpubRead.ViewModels;
@@ -20,8 +21,34 @@ public partial class MainWindow : Window
         _epubParser = epubParser;
         _appDataDir = appDataDir;
 
+        // 自定义标题栏拖拽
+        MouseDown += OnTitleBarMouseDown;
+
         // 加载书架页面
         Loaded += OnLoaded;
+    }
+
+    private void OnTitleBarMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left)
+            DragMove();
+    }
+
+    private void OnMinimizeClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void OnMaximizeClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -48,6 +75,15 @@ public partial class MainWindow : Window
         {
             if (MainFrame.CanGoBack)
                 MainFrame.GoBack();
+        };
+
+        // 订阅进度变更，持久化保存
+        readerViewModel.ProgressChanged += (s, args) =>
+        {
+            _bookshelfService.UpdateBookProgress(book.Id, args.chapterIndex, args.totalChapters);
+            // 同步更新内存中 Book 对象的进度，以便书架页面刷新时显示
+            book.LastReadChapterIndex = args.chapterIndex;
+            book.TotalChapters = args.totalChapters;
         };
 
         MainFrame.Navigate(readerPage);

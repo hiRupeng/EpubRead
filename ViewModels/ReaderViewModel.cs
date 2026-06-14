@@ -35,7 +35,9 @@ public partial class ReaderViewModel : ObservableObject
     private bool _hasNext;
 
     public event EventHandler<string>? ContentRequested;
+    public event EventHandler<string?>? ScrollToAnchorRequested;
     public event EventHandler? GoBackRequested;
+    public event EventHandler<(int chapterIndex, int totalChapters)>? ProgressChanged;
 
     public ReaderViewModel(EpubParser epubParser)
     {
@@ -43,7 +45,7 @@ public partial class ReaderViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 加载 EPUB 书籍并导航到第一章
+    /// 加载 EPUB 书籍并导航到上次阅读位置或第一章
     /// </summary>
     public void LoadBook(Book book)
     {
@@ -56,8 +58,13 @@ public partial class ReaderViewModel : ObservableObject
         foreach (var ch in _epubBook.Chapters)
             Chapters.Add(ch);
 
-        // 导航到第一章
-        if (Chapters.Count > 0)
+        if (Chapters.Count == 0) return;
+
+        // 恢复上次阅读位置
+        int startIndex = book.LastReadChapterIndex;
+        if (startIndex >= 0 && startIndex < Chapters.Count)
+            NavigateToChapter(Chapters[startIndex]);
+        else
             NavigateToChapter(Chapters[0]);
     }
 
@@ -72,12 +79,9 @@ public partial class ReaderViewModel : ObservableObject
     {
         if (chapter == null || _epubBook == null) return;
 
-        // 按需加载内容
-        if (string.IsNullOrEmpty(chapter.Content))
-        {
-            chapter.Content = _epubParser.LoadChapterContent(
-                _filePath, _epubBook.BasePath, chapter.Href);
-        }
+        // 强制重新加载内容
+        chapter.Content = _epubParser.LoadChapterContent(
+            _filePath, _epubBook.BasePath, chapter.Href);
 
         CurrentChapter = chapter;
 
@@ -85,7 +89,18 @@ public partial class ReaderViewModel : ObservableObject
         var styledContent = WrapWithReadingStyle(chapter.Content ?? "<p>内容为空</p>");
         ContentRequested?.Invoke(this, styledContent);
 
+        // 如果有锚点，内容渲染后滚动到目标位置
+        if (!string.IsNullOrEmpty(chapter.Anchor))
+        {
+            ScrollToAnchorRequested?.Invoke(this, chapter.Anchor);
+        }
+
         UpdateNavigation();
+
+        // 通知外部保存进度
+        var idx = Chapters.IndexOf(chapter);
+        if (idx >= 0)
+            ProgressChanged?.Invoke(this, (idx, Chapters.Count));
     }
 
     [RelayCommand]
@@ -124,6 +139,10 @@ public partial class ReaderViewModel : ObservableObject
 
     private static string WrapWithReadingStyle(string content)
     {
+        // 如果原始内容包含完整 HTML 文档，提取 <body> 内部内容
+        // 避免双重 <html> 嵌套导致 WebView2 渲染空白
+        var bodyContent = ExtractBodyContent(content);
+
         return $$"""
             <!DOCTYPE html>
             <html>
@@ -154,9 +173,31 @@ public partial class ReaderViewModel : ObservableObject
             </style>
             </head>
             <body>
-            {{content}}
+            {{bodyContent}}
             </body>
             </html>
             """;
+    }
+
+    /// <summary>
+    /// 从 XHTML 内容中提取 &lt;body&gt; 内部内容
+    /// 如果内容不是完整文档，则原样返回
+    /// </summary>
+    private static string ExtractBodyContent(string html)
+    {
+        // 尝试使用正则提取 body 内容
+        var bodyMatch = System.Text.RegularExpressions.Regex.Match(
+            html, @"<body[^>]*>(.*?)</body>",
+            System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (bodyMatch.Success && bodyMatch.Groups.Count > 1)
+        {
+            var extracted = bodyMatch.Groups[1].Value.Trim();
+            if (!string.IsNullOrEmpty(extracted))
+                return extracted;
+        }
+
+        // 不是完整文档，原样返回
+        return html;
     }
 }

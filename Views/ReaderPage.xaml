@@ -1,4 +1,5 @@
 <Page x:Class="EpubRead.Views.ReaderPage"
+      x:Name="ReaderPageRoot"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
@@ -6,6 +7,39 @@
       Background="#1E1E2E">
 
     <Page.Resources>
+        <!-- 目录项按钮样式 -->
+        <Style x:Key="TocItemStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#C0C0D0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Margin" Value="4,2" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}"
+                                Margin="{TemplateBinding Margin}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3A3A4A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#4A4A5E" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ReaderButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#A0A0B0" />
@@ -88,31 +122,15 @@
                     <ItemsControl ItemsSource="{Binding Chapters}" Margin="4,8">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type models:Chapter}">
-                                <Border Cursor="Hand" Padding="16,10" Margin="4,2"
-                                        CornerRadius="6">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent" />
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="#3A3A4A" />
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-
-                                    <Border.InputBindings>
-                                        <MouseBinding Gesture="LeftClick"
-                                                      Command="{Binding DataContext.NavigateToChapterCommand,
-                                                          RelativeSource={RelativeSource AncestorType=Page}}"
-                                                      CommandParameter="{Binding}" />
-                                    </Border.InputBindings>
-
+                                <Button Style="{StaticResource TocItemStyle}"
+                                        Command="{Binding DataContext.NavigateToChapterCommand,
+                                            Source={x:Reference ReaderPageRoot}}"
+                                        CommandParameter="{Binding}">
                                     <TextBlock Text="{Binding Title}" FontSize="13"
                                                Foreground="#C0C0D0"
                                                TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding Title}" />
-                                </Border>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

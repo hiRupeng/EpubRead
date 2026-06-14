@@ -3,14 +3,54 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:converters="clr-namespace:EpubRead.Converters"
       xmlns:models="clr-namespace:EpubRead.Models"
-      Background="#1E1E2E">
+      Background="#1E1E2E"
+      UseLayoutRounding="True">
 
     <Page.Resources>
         <converters:CoverPathConverter x:Key="CoverPathConverter" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
+        <converters:ProgressToVisibilityConverter x:Key="ProgressToVisibility" />
+
+        <!-- 卡片删除按钮样式 -->
+        <Style x:Key="CardDeleteButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="#CCE8114B" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="14"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}">
+                            <TextBlock Text="✕" Foreground="{TemplateBinding Foreground}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       FontWeight="{TemplateBinding FontWeight}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FFE8114B" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#FFC00E3E" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Page.Resources>
 
-    <Grid>
+    <Grid AllowDrop="True"
+          DragEnter="OnDragEnter" DragLeave="OnDragLeave"
+          Drop="OnDrop">
         <Grid.RowDefinitions>
             <RowDefinition Height="72" />
             <RowDefinition Height="*" />
@@ -19,15 +59,42 @@
         <!-- 顶部导航栏 -->
         <Border Grid.Row="0" Background="#2D2D3F" CornerRadius="0,0,16,16">
             <Grid Margin="32,0">
-                <TextBlock Text="EPUB 阅读器" FontSize="24" FontWeight="SemiBold"
-                           Foreground="#E8E8EC" VerticalAlignment="Center"
-                           FontFamily="Microsoft YaHei" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="EPUB 阅读器" FontSize="18" FontWeight="SemiBold"
+                               Foreground="#E8E8EC" VerticalAlignment="Center"
+                               FontFamily="Microsoft YaHei" />
 
-                <Button Content="+ 导入书籍"
-                        Command="{Binding ImportBookCommand}"
-                        Width="140" Height="40" HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource ImportButtonStyle}" />
+                    <!-- 搜索框 -->
+                    <Border Background="#3A3A4A" CornerRadius="8" Height="34"
+                            VerticalAlignment="Center" Width="220" Margin="20,0,0,0">
+                        <Grid Margin="8,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="Transparent" Foreground="#E8E8EC"
+                                     BorderThickness="0" VerticalAlignment="Center"
+                                     FontSize="13" FontFamily="Microsoft YaHei"
+                                     CaretBrush="#4A90D9" />
+                            <TextBlock Grid.Column="1" Text="🔍" Foreground="#6B6B80"
+                                       VerticalAlignment="Center" FontSize="13" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <Button Content="📁 导入文件夹"
+                            Command="{Binding ImportFolderCommand}"
+                            Height="34"
+                            Style="{StaticResource ImportButtonStyle}" />
+                    <Button Content="+ 导入书籍"
+                            Command="{Binding ImportBookCommand}"
+                            Height="34" Margin="10,0,0,0"
+                            Style="{StaticResource ImportButtonStyle}" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -43,102 +110,168 @@
                            Visibility="{Binding Books.Count, Converter={StaticResource NullToVisibility}, ConverterParameter=invert}" />
 
                 <!-- 书架网格 -->
-                <ItemsControl ItemsSource="{Binding Books}"
+                <ItemsControl ItemsSource="{Binding BooksView}"
                               Visibility="{Binding Books.Count, Converter={StaticResource NullToVisibility}}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <UniformGrid Columns="5" HorizontalAlignment="Center" />
+                            <WrapPanel Orientation="Horizontal" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:Book}">
-                            <Border Width="180" Height="280" Margin="10"
-                                    Background="#2D2D3F" CornerRadius="12"
-                                    Cursor="Hand" ToolTip="{Binding Title}">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="#000000" BlurRadius="12"
-                                                      ShadowDepth="0" Opacity="0.35" />
-                                </Border.Effect>
+                            <Grid Width="160" Height="250" Margin="16,16,16,16"
+                                   Cursor="Hand" ToolTip="{Binding Title}">
+                                <!-- 阴影层：偏移 + 半透明 -->
+                                <Border Margin="0,3,0,0" Background="#40000000"
+                                        CornerRadius="12" />
+                                <!-- 卡片主体层（带圆角裁剪，确保四角子内容不溢出） -->
+                                <Border Background="#2D2D3F" CornerRadius="12">
+                                    <Border.Clip>
+                                        <RectangleGeometry RadiusX="12" RadiusY="12"
+                                                           Rect="0,0,160,250" />
+                                    </Border.Clip>
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <TranslateTransform X="0" Y="0" />
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Trigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation
+                                                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                    To="-6" Duration="0:0:0.15" />
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </Trigger.EnterActions>
+                                                    <Trigger.ExitActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation
+                                                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                    To="0" Duration="0:0:0.15" />
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </Trigger.ExitActions>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
 
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="RenderTransform">
-                                            <Setter.Value>
-                                                <TranslateTransform X="0" Y="0" />
-                                            </Setter.Value>
-                                        </Setter>
-                                        <Style.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Trigger.EnterActions>
-                                                    <BeginStoryboard>
-                                                        <Storyboard>
-                                                            <DoubleAnimation
-                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                To="-6" Duration="0:0:0.15" />
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </Trigger.EnterActions>
-                                                <Trigger.ExitActions>
-                                                    <BeginStoryboard>
-                                                        <Storyboard>
-                                                            <DoubleAnimation
-                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                To="0" Duration="0:0:0.15" />
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </Trigger.ExitActions>
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-
-                                <Border.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="🗑 从书架移除"
-                                                  Command="{Binding DataContext.DeleteBookCommand,
-                                                      RelativeSource={RelativeSource AncestorType=Page}}"
-                                                  CommandParameter="{Binding}" />
-                                    </ContextMenu>
-                                </Border.ContextMenu>
-
-                                <Border.InputBindings>
-                                    <MouseBinding Gesture="LeftDoubleClick"
+                                    <Border.InputBindings>
+                                    <MouseBinding Gesture="LeftClick"
                                                   Command="{Binding DataContext.OpenBookCommand,
                                                       RelativeSource={RelativeSource AncestorType=Page}}"
                                                   CommandParameter="{Binding}" />
                                 </Border.InputBindings>
 
                                 <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="220" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
+                                    <!-- 内容层 -->
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="196" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
 
-                                    <!-- 封面图 / 占位图 -->
-                                    <Border Grid.Row="0" CornerRadius="12,12,0,0"
-                                            ClipToBounds="True"
-                                            Background="{Binding CoverPath, Converter={StaticResource CoverPathConverter}}">
-                                        <Image Source="{Binding CoverPath, Converter={StaticResource CoverPathConverter}}"
-                                               Stretch="UniformToFill" />
-                                    </Border>
+                                        <!-- 封面图 / 占位图 -->
+                                        <Border Grid.Row="0" CornerRadius="12,12,0,0"
+                                                ClipToBounds="True"
+                                                Background="{Binding CoverPath, Converter={StaticResource CoverPathConverter}}">
+                                            <Grid>
+                                                <Image Source="{Binding CoverPath, Converter={StaticResource CoverPathConverter}}"
+                                                       Stretch="UniformToFill" />
 
-                                    <!-- 书名和作者 -->
-                                    <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="10,6,10,8">
-                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
-                                                   Foreground="#E8E8EC" TextTrimming="CharacterEllipsis"
-                                                   MaxWidth="160" HorizontalAlignment="Center" />
-                                        <TextBlock Text="{Binding Author}" FontSize="11"
-                                                   Foreground="#A0A0B0" TextTrimming="CharacterEllipsis"
-                                                   MaxWidth="160" HorizontalAlignment="Center"
-                                                   Margin="0,3,0,0" />
-                                    </StackPanel>
+                                                <!-- 阅读进度条（底部覆盖） -->
+                                                <Border VerticalAlignment="Bottom" Height="4"
+                                                        Background="#55000000">
+                                                    <ProgressBar Value="{Binding ReadProgressPercent, Mode=OneWay}"
+                                                                 Maximum="100" Height="4"
+                                                                 Foreground="#4A90D9"
+                                                                 Background="Transparent"
+                                                                 BorderThickness="0"
+                                                                 Visibility="{Binding ReadProgressPercent, Mode=OneWay, Converter={StaticResource ProgressToVisibility}}" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- 书名和作者（带底部圆角裁剪） -->
+                                        <Border Grid.Row="1" CornerRadius="0,0,12,12"
+                                                ClipToBounds="True"
+                                                Background="#2D2D3F">
+                                            <StackPanel VerticalAlignment="Center" Margin="10,6,10,8">
+                                                <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
+                                                           Foreground="#E8E8EC" TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="140" HorizontalAlignment="Center" />
+                                                <TextBlock Text="{Binding Author}" FontSize="11"
+                                                           Foreground="#A0A0B0" TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="140" HorizontalAlignment="Center"
+                                                           Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- 删除按钮（悬浮层） -->
+                                    <Button HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Margin="6"
+                                            Command="{Binding DataContext.DeleteBookCommand,
+                                                RelativeSource={RelativeSource AncestorType=Page}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.Style>
+                                            <Style TargetType="Button"
+                                                   BasedOn="{StaticResource CardDeleteButtonStyle}">
+                                                <Setter Property="Opacity" Value="0" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True">
+                                                        <DataTrigger.EnterActions>
+                                                            <BeginStoryboard>
+                                                                <Storyboard>
+                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                     To="1" Duration="0:0:0.15" />
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </DataTrigger.EnterActions>
+                                                        <DataTrigger.ExitActions>
+                                                            <BeginStoryboard>
+                                                                <Storyboard>
+                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                     To="0" Duration="0:0:0.15" />
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </DataTrigger.ExitActions>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
                                 </Grid>
                             </Border>
+                        </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </Grid>
         </ScrollViewer>
+
+        <!-- 拖拽导入覆盖层 -->
+        <Border x:Name="DragOverlay" Grid.RowSpan="2"
+                Background="#664A90D9" Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <Border CornerRadius="16" BorderBrush="#FFFFFF" BorderThickness="2"
+                    Background="#334A90D9" Width="400" Height="200"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center" />
+                    <TextBlock Text="释放鼠标导入 EPUB 文件" FontSize="18"
+                               Foreground="#FFFFFF" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,12,0,0" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </Page>

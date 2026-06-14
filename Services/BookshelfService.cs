@@ -17,7 +17,7 @@ public class BookshelfService
     }
 
     /// <summary>
-    /// 初始化数据库，创建 Books 表（如不存在）
+    /// 初始化数据库，创建 Books 表（如不存在）并进行版本迁移
     /// </summary>
     public void InitializeDatabase()
     {
@@ -36,6 +36,24 @@ public class BookshelfService
             )
             """;
         cmd.ExecuteNonQuery();
+
+        // 迁移：添加新字段（如已存在则忽略）
+        MigrateAddColumn(connection, "Books", "LastReadChapterIndex", "INTEGER DEFAULT -1");
+        MigrateAddColumn(connection, "Books", "TotalChapters", "INTEGER DEFAULT 0");
+    }
+
+    private static void MigrateAddColumn(SqliteConnection connection, string table, string column, string columnDef)
+    {
+        try
+        {
+            var cmd = connection.CreateCommand();
+            cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {columnDef}";
+            cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("duplicate column"))
+        {
+            // 列已存在，忽略
+        }
     }
 
     /// <summary>
@@ -48,7 +66,7 @@ public class BookshelfService
         connection.Open();
 
         var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Title, Author, FilePath, CoverPath, ImportDate FROM Books ORDER BY ImportDate DESC";
+        cmd.CommandText = "SELECT Id, Title, Author, FilePath, CoverPath, ImportDate, LastReadChapterIndex, TotalChapters FROM Books ORDER BY ImportDate DESC";
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -60,7 +78,9 @@ public class BookshelfService
                 Author = reader.GetString(2),
                 FilePath = reader.GetString(3),
                 CoverPath = reader.IsDBNull(4) ? null : reader.GetString(4),
-                ImportDate = DateTime.Parse(reader.GetString(5))
+                ImportDate = DateTime.Parse(reader.GetString(5)),
+                LastReadChapterIndex = reader.IsDBNull(6) ? -1 : reader.GetInt32(6),
+                TotalChapters = reader.IsDBNull(7) ? 0 : reader.GetInt32(7)
             });
         }
 
@@ -77,8 +97,8 @@ public class BookshelfService
 
         var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Books (Id, Title, Author, FilePath, CoverPath, ImportDate)
-            VALUES (@id, @title, @author, @filePath, @coverPath, @importDate)
+            INSERT INTO Books (Id, Title, Author, FilePath, CoverPath, ImportDate, LastReadChapterIndex, TotalChapters)
+            VALUES (@id, @title, @author, @filePath, @coverPath, @importDate, @lastReadChapterIndex, @totalChapters)
             """;
         cmd.Parameters.AddWithValue("@id", book.Id);
         cmd.Parameters.AddWithValue("@title", book.Title);
@@ -86,6 +106,8 @@ public class BookshelfService
         cmd.Parameters.AddWithValue("@filePath", book.FilePath);
         cmd.Parameters.AddWithValue("@coverPath", (object?)book.CoverPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@importDate", book.ImportDate.ToString("O"));
+        cmd.Parameters.AddWithValue("@lastReadChapterIndex", book.LastReadChapterIndex);
+        cmd.Parameters.AddWithValue("@totalChapters", book.TotalChapters);
         cmd.ExecuteNonQuery();
     }
 
@@ -123,5 +145,24 @@ public class BookshelfService
             try { File.Delete(coverPath); }
             catch { /* 忽略清理失败 */ }
         }
+    }
+
+    /// <summary>
+    /// 更新书籍阅读进度
+    /// </summary>
+    public void UpdateBookProgress(string bookId, int chapterIndex, int totalChapters)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE Books SET LastReadChapterIndex = @chapterIndex, TotalChapters = @totalChapters
+            WHERE Id = @id
+            """;
+        cmd.Parameters.AddWithValue("@id", bookId);
+        cmd.Parameters.AddWithValue("@chapterIndex", chapterIndex);
+        cmd.Parameters.AddWithValue("@totalChapters", totalChapters);
+        cmd.ExecuteNonQuery();
     }
 }
