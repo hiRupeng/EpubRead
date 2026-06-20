@@ -28,11 +28,15 @@ public partial class App : Application
         var bookshelfService = new BookshelfService(DbPath);
         bookshelfService.InitializeDatabase();
 
+        // 阅读设置服务
+        var settingsService = new ReadingSettingsService(DbPath);
+        settingsService.InitializeTable();
+
         // 创建服务
         var epubParser = new EpubParser();
 
         // 启动主窗口
-        var mainWindow = new MainWindow(bookshelfService, epubParser, AppDataDir);
+        var mainWindow = new MainWindow(bookshelfService, epubParser, settingsService, AppDataDir);
         mainWindow.Show();
     }
 }

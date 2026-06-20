@@ -7,6 +7,15 @@
         <!-- Bool 到 Visibility 转换器 -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
+        <!-- 阅读器转换器 -->
+        <converters:LevelToMarginConverter x:Key="LevelToMarginConverter" />
+        <converters:LevelToIconConverter x:Key="LevelToIconConverter" />
+        <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+        <converters:ThemeEqualsConverter x:Key="ThemeEqualsConverter" />
+        <converters:NavModeToTextConverter x:Key="NavModeToTextConverter" />
+        <converters:PercentToWidthConverter x:Key="PercentToWidth" />
+        <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
+
         <!-- 导入按钮样式 -->
         <Style x:Key="ImportButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#4A90D9" />

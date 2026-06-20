@@ -4,7 +4,8 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
       xmlns:models="clr-namespace:EpubRead.Models"
-      Background="#1E1E2E">
+      Background="#1E1E2E"
+      KeyDown="OnPageKeyDown">
 
     <Page.Resources>
         <!-- 目录项按钮样式 -->
@@ -13,7 +14,7 @@
             <Setter Property="Foreground" Value="#C0C0D0" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Padding" Value="16,8" />
             <Setter Property="Margin" Value="4,2" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="FontSize" Value="13" />
@@ -40,6 +41,42 @@
             </Setter>
         </Style>
 
+        <!-- 设置面板选项按钮 -->
+        <Style x:Key="OptionButtonStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="#3A3A4A" />
+            <Setter Property="Foreground" Value="#A0A0B0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinWidth" Value="60" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Name="Border" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#357ABD" />
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#6BB3F0" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#4A4A5E" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 通用阅读器按钮 -->
         <Style x:Key="ReaderButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#A0A0B0" />
@@ -68,98 +105,432 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 主题色圆形选择器 -->
+        <Style x:Key="ThemeCircleStyle" TargetType="RadioButton">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Border Width="36" Height="36" CornerRadius="18"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" />
+                            <Border Width="10" Height="10" CornerRadius="5"
+                                    Background="White" HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Opacity="0" x:Name="CheckMark" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckMark" Property="Opacity" Value="1" />
+                                <Setter Property="BorderBrush" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderBrush" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 现代滚动条 Thumb 样式 -->
+        <Style x:Key="ModernScrollBarThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBorder"
+                                Background="#4A4A5E" CornerRadius="3"
+                                Margin="1,2" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#6BB3F0" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#4A90D9" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 现代竖向滚动条样式（细、圆角、无箭头） -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Width" Value="8" />
+            <Setter Property="MinWidth" Value="8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="Transparent" CornerRadius="4">
+                            <Track Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource ModernScrollBarThumb}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="8" />
+                    <Setter Property="MinHeight" Value="8" />
+                    <Setter Property="Width" Value="NaN" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Page.Resources>
 
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="56" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="56" />
-        </Grid.RowDefinitions>
+        <!-- ═══ 主布局 ═══ -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="56" />
+                <RowDefinition Height="3" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="56" />
+            </Grid.RowDefinitions>
 
-        <!-- 顶部工具栏 -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#2D2D3F">
-            <Grid Margin="12,0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="← 书架" Style="{StaticResource ReaderButtonStyle}"
-                            Command="{Binding GoBackCommand}" />
-                </StackPanel>
+            <!-- 顶部工具栏 -->
+            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#2D2D3F" Panel.ZIndex="10">
+                <Grid Margin="12,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="← 书架" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding GoBackCommand}" />
+                    </StackPanel>
 
-                <TextBlock Text="{Binding BookTitle}" FontSize="16" FontWeight="Medium"
-                           Foreground="#E8E8EC" HorizontalAlignment="Center"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                           MaxWidth="500" />
+                    <TextBlock Text="{Binding BookTitle}" FontSize="16" FontWeight="Medium"
+                               Foreground="#E8E8EC" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               MaxWidth="400" />
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Content="☰ 目录" Style="{StaticResource ReaderButtonStyle}"
-                            Command="{Binding ToggleTocCommand}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Content="A−" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding DecreaseFontSizeCommand}"
+                                FontWeight="Bold" FontSize="15" ToolTip="缩小字体" />
+                        <Button Content="A+" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding IncreaseFontSizeCommand}"
+                                FontWeight="Bold" FontSize="17" ToolTip="放大字体" />
+                        <Border Width="1" Height="20" Background="#3A3A4A" Margin="4,0" />
+                        <Button Content="⚙" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding ToggleSettingsCommand}"
+                                FontSize="18" ToolTip="阅读设置" />
+                        <Button Content="☰ 目录" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding ToggleTocCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
-        <!-- 左侧可折叠目录面板 -->
-        <Border Grid.Row="1" Grid.Column="0"
-                Width="280"
-                Visibility="{Binding IsTocOpen, Converter={StaticResource BoolToVisibility}}"
-                Background="#262636" BorderBrush="#3A3A4A" BorderThickness="0,0,1,0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="40" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <!-- 顶部进度条 -->
+            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#262636" Height="3">
+                <ProgressBar Value="{Binding TopProgress}" Maximum="1" Minimum="0"
+                             Foreground="#4A90D9" Background="Transparent"
+                             BorderThickness="0" Height="3" />
+            </Border>
 
-                <Border Grid.Row="0" BorderBrush="#3A3A4A" BorderThickness="0,0,0,1"
-                        Padding="16,0">
-                    <TextBlock Text="章节目录" Foreground="#A0A0B0" FontSize="13"
-                               VerticalAlignment="Center" />
-                </Border>
+            <!-- 右侧目录面板（可折叠侧栏，与设置面板共享右列，互斥显示） -->
+            <Border Grid.Row="2" Grid.Column="1"
+                    Width="280"
+                    Visibility="{Binding IsTocOpen, Converter={StaticResource BoolToVisibility}}"
+                    Background="#262636" BorderBrush="#3A3A4A" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="40" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Chapters}" Margin="4,8">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type models:Chapter}">
-                                <Button Style="{StaticResource TocItemStyle}"
-                                        Command="{Binding DataContext.NavigateToChapterCommand,
-                                            Source={x:Reference ReaderPageRoot}}"
-                                        CommandParameter="{Binding}">
-                                    <TextBlock Text="{Binding Title}" FontSize="13"
-                                               Foreground="#C0C0D0"
-                                               TextTrimming="CharacterEllipsis"
-                                               ToolTip="{Binding Title}" />
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <Border Grid.Row="0" BorderBrush="#3A3A4A" BorderThickness="0,0,0,1"
+                            Padding="16,0">
+                        <TextBlock Text="章节目录" Foreground="#A0A0B0" FontSize="13"
+                                   VerticalAlignment="Center" />
+                    </Border>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding TocChapters}" Margin="4,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:Chapter}">
+                                    <StackPanel>
+                                        <Button Style="{StaticResource TocItemStyle}"
+                                                Command="{Binding DataContext.NavigateToChapterCommand,
+                                                    Source={x:Reference ReaderPageRoot}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="{Binding Title}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Level, Converter={StaticResource LevelToIconConverter}}"
+                                                           FontSize="12" Margin="0,0,6,0"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Title}" FontSize="13"
+                                                           Foreground="#C0C0D0"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}" />
+                                            </Grid>
+                                        </Button>
+                                        <ItemsControl ItemsSource="{Binding Children}"
+                                                      Margin="20,0,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type models:Chapter}">
+                                                    <StackPanel>
+                                                        <Button Style="{StaticResource TocItemStyle}"
+                                                                Command="{Binding DataContext.NavigateToChapterCommand,
+                                                                    Source={x:Reference ReaderPageRoot}}"
+                                                                CommandParameter="{Binding}"
+                                                                ToolTip="{Binding Title}">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="📄"
+                                                                           FontSize="12" Margin="0,0,6,0"
+                                                                           VerticalAlignment="Center" />
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="{Binding Title}" FontSize="13"
+                                                                           Foreground="#C0C0D0"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </Grid>
+                                                        </Button>
+                                                        <ItemsControl ItemsSource="{Binding Children}"
+                                                                      Margin="20,0,0,0">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate DataType="{x:Type models:Chapter}">
+                                                                    <Button Style="{StaticResource TocItemStyle}"
+                                                                            Command="{Binding DataContext.NavigateToChapterCommand,
+                                                                                Source={x:Reference ReaderPageRoot}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            ToolTip="{Binding Title}">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="Auto" />
+                                                                                <ColumnDefinition Width="*" />
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBlock Grid.Column="0" Text="·"
+                                                                                       FontSize="12" Margin="0,0,6,0"
+                                                                                       Foreground="#6BB3F0"
+                                                                                       VerticalAlignment="Center" />
+                                                                            <TextBlock Grid.Column="1"
+                                                                                       Text="{Binding Title}" FontSize="12"
+                                                                                       Foreground="#A0A0B0"
+                                                                                       TextTrimming="CharacterEllipsis" />
+                                                                        </Grid>
+                                                                    </Button>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- WebView2 阅读区域 -->
+            <wv2:WebView2 x:Name="WebView" Grid.Row="2" Grid.Column="0" />
+
+            <!-- 底部导航栏 -->
+            <Border Grid.Row="3" Grid.ColumnSpan="2"
+                    Background="#2D2D3F" BorderBrush="#3A3A4A" BorderThickness="0,1,0,0">
+                <Grid Margin="16,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ProgressText}" Foreground="#A0A0B0"
+                                   FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <Button Content="◀ 上一章" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding NavigatePrevCommand}"
+                                IsEnabled="{Binding HasPrev}" />
+                        <Border Background="#3A3A4A" CornerRadius="12"
+                                Padding="20,6" Margin="16,0">
+                            <TextBlock Text="{Binding ProgressText}" Foreground="#A0A0B0"
+                                       FontSize="13" />
+                        </Border>
+                        <Button Content="下一章 ▶" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding NavigateNextCommand}"
+                                IsEnabled="{Binding HasNext}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <TextBlock Foreground="#6BB3F0" FontSize="11" Opacity="0.7"
+                                   VerticalAlignment="Center">
+                            <Run Text="{Binding FontSize, StringFormat={}{0}px}" />
+                            <Run Text=" · " />
+                            <Run Text="{Binding NavigationMode, Converter={StaticResource NavModeToTextConverter}}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <!-- 右侧设置面板（可折叠侧栏，与目录面板共享右列，互斥显示） -->
+            <Border Grid.Row="2" Grid.Column="1"
+                    Width="300"
+                    Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVisibility}}"
+                    Background="#2D2D3F" BorderBrush="#3A3A4A" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,16,16,24">
+
+                            <!-- 面板标题 -->
+                            <Grid Margin="0,0,0,16">
+                                <TextBlock Text="阅读设置" Foreground="#E8E8EC" FontSize="16"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button Content="✕" Style="{StaticResource ReaderButtonStyle}"
+                                        HorizontalAlignment="Right" Padding="8,4"
+                                        Command="{Binding ToggleSettingsCommand}" />
+                            </Grid>
+
+                            <!-- 主题选择 -->
+                            <TextBlock Text="主题" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <RadioButton Style="{StaticResource ThemeCircleStyle}"
+                                             Background="#F5F0E8" BorderBrush="#888"
+                                             GroupName="Theme"
+                                             Command="{Binding SetThemeCommand}"
+                                             CommandParameter="{x:Static models:ThemeType.Day}"
+                                             ToolTip="白天模式" Margin="0,0,12,0" />
+                                <RadioButton Style="{StaticResource ThemeCircleStyle}"
+                                             Background="#1A1A2E" BorderBrush="#555"
+                                             GroupName="Theme"
+                                             Command="{Binding SetThemeCommand}"
+                                             CommandParameter="{x:Static models:ThemeType.Night}"
+                                             ToolTip="夜晚模式" Margin="0,0,12,0" />
+                                <RadioButton Style="{StaticResource ThemeCircleStyle}"
+                                             Background="#C7EDCC" BorderBrush="#888"
+                                             GroupName="Theme"
+                                             Command="{Binding SetThemeCommand}"
+                                             CommandParameter="{x:Static models:ThemeType.EyeCare}"
+                                             ToolTip="护眼模式" />
+                            </StackPanel>
+
+                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+
+                            <!-- 字体大小 -->
+                            <TextBlock Text="字体大小" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="A−" Style="{StaticResource ReaderButtonStyle}"
+                                        FontWeight="Bold" Padding="10,4"
+                                        Command="{Binding DecreaseFontSizeCommand}" />
+                                <TextBlock Grid.Column="1" Text="{Binding FontSize, StringFormat={}{0}px}"
+                                           Foreground="#E8E8EC" FontSize="16" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Button Grid.Column="2" Content="A+" Style="{StaticResource ReaderButtonStyle}"
+                                        FontWeight="Bold" Padding="10,4"
+                                        Command="{Binding IncreaseFontSizeCommand}" />
+                            </Grid>
+
+                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+
+                            <!-- 字体选择 -->
+                            <TextBlock Text="字体" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="衬线"
+                                             GroupName="Font"
+                                             Command="{Binding SetFontFamilyCommand}"
+                                             CommandParameter="{x:Static models:FontFamilyOption.Serif}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="无衬线"
+                                             GroupName="Font"
+                                             Command="{Binding SetFontFamilyCommand}"
+                                             CommandParameter="{x:Static models:FontFamilyOption.SansSerif}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="等宽"
+                                             GroupName="Font"
+                                             Command="{Binding SetFontFamilyCommand}"
+                                             CommandParameter="{x:Static models:FontFamilyOption.Monospace}" />
+                            </StackPanel>
+
+                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+
+                            <!-- 行间距 -->
+                            <TextBlock Text="行间距" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="紧凑"
+                                             GroupName="LineHeight"
+                                             Command="{Binding SetLineHeightCommand}"
+                                             CommandParameter="{x:Static models:LineHeightOption.Compact}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="标准"
+                                             GroupName="LineHeight"
+                                             Command="{Binding SetLineHeightCommand}"
+                                             CommandParameter="{x:Static models:LineHeightOption.Normal}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="宽松"
+                                             GroupName="LineHeight"
+                                             Command="{Binding SetLineHeightCommand}"
+                                             CommandParameter="{x:Static models:LineHeightOption.Loose}" />
+                            </StackPanel>
+
+                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+
+                            <!-- 页宽 -->
+                            <TextBlock Text="页宽" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="窄"
+                                             GroupName="PageWidth"
+                                             Command="{Binding SetPageWidthCommand}"
+                                             CommandParameter="{x:Static models:PageWidthOption.Narrow}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="中"
+                                             GroupName="PageWidth"
+                                             Command="{Binding SetPageWidthCommand}"
+                                             CommandParameter="{x:Static models:PageWidthOption.Medium}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="宽"
+                                             GroupName="PageWidth"
+                                             Command="{Binding SetPageWidthCommand}"
+                                             CommandParameter="{x:Static models:PageWidthOption.Wide}" />
+                            </StackPanel>
+
+                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+
+                            <!-- 导航模式 -->
+                            <TextBlock Text="导航模式" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="🔖 小节"
+                                             GroupName="NavMode"
+                                             Command="{Binding SwitchNavigationModeCommand}"
+                                             CommandParameter="{x:Static models:NavigationMode.BySection}" Margin="0,0,8,0" />
+                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="📄 文件"
+                                             GroupName="NavMode"
+                                             Command="{Binding SwitchNavigationModeCommand}"
+                                             CommandParameter="{x:Static models:NavigationMode.BySpineFile}" />
+                            </StackPanel>
+
+                            <!-- 快捷键提示 -->
+                            <Border Background="#262636" CornerRadius="8" Padding="12,10" Margin="0,20,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="快捷键" Foreground="#6BB3F0" FontSize="11"
+                                               FontWeight="SemiBold" Margin="0,0,0,6" />
+                                    <TextBlock Foreground="#888" FontSize="11" LineHeight="18"
+                                               TextWrapping="Wrap">
+                                        ← → 上下章节 · T 目录 · S 设置 · ESC 关闭
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
+                    </StackPanel>
                 </ScrollViewer>
-            </Grid>
-        </Border>
-
-        <!-- WebView2 阅读区域 -->
-        <wv2:WebView2 x:Name="WebView" Grid.Row="1" Grid.Column="1" />
-
-        <!-- 底部导航栏 -->
-        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                Background="#2D2D3F" BorderBrush="#3A3A4A" BorderThickness="0,1,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                        VerticalAlignment="Center">
-                <Button Content="◀ 上一章" Style="{StaticResource ReaderButtonStyle}"
-                        Command="{Binding NavigatePrevCommand}"
-                        IsEnabled="{Binding HasPrev}" />
-
-                <Border Background="#3A3A4A" CornerRadius="12"
-                        Padding="20,6" Margin="16,0">
-                    <TextBlock Text="{Binding ProgressText}" Foreground="#A0A0B0"
-                               FontSize="13" />
-                </Border>
-
-                <Button Content="下一章 ▶" Style="{StaticResource ReaderButtonStyle}"
-                        Command="{Binding NavigateNextCommand}"
-                        IsEnabled="{Binding HasNext}" />
-            </StackPanel>
-        </Border>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

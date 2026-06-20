@@ -11,14 +11,16 @@ public partial class MainWindow : Window
 {
     private readonly BookshelfService _bookshelfService;
     private readonly EpubParser _epubParser;
+    private readonly ReadingSettingsService _settingsService;
     private readonly string _appDataDir;
     private BookshelfViewModel? _bookshelfViewModel;
 
-    public MainWindow(BookshelfService bookshelfService, EpubParser epubParser, string appDataDir)
+    public MainWindow(BookshelfService bookshelfService, EpubParser epubParser, ReadingSettingsService settingsService, string appDataDir)
     {
         InitializeComponent();
         _bookshelfService = bookshelfService;
         _epubParser = epubParser;
+        _settingsService = settingsService;
         _appDataDir = appDataDir;
 
         // 自定义标题栏拖拽
@@ -30,8 +32,19 @@ public partial class MainWindow : Window
 
     private void OnTitleBarMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left)
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        if (e.ClickCount >= 2)
+        {
+            // 双击标题栏：最大化 / 还原
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+        }
+        else
+        {
             DragMove();
+        }
     }
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e)
@@ -67,7 +80,7 @@ public partial class MainWindow : Window
 
     private void OnOpenBookRequested(object? sender, Book book)
     {
-        var readerViewModel = new ReaderViewModel(_epubParser);
+        var readerViewModel = new ReaderViewModel(_epubParser, _settingsService);
         var readerPage = new ReaderPage(readerViewModel);
 
         // 订阅返回事件
