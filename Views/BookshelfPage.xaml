@@ -11,6 +11,64 @@
         <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
         <converters:ProgressToVisibilityConverter x:Key="ProgressToVisibility" />
 
+        <!-- 进度条渐变画刷 -->
+        <LinearGradientBrush x:Key="ProgressGradientBrush" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#4A90D9" Offset="0" />
+            <GradientStop Color="#6BB3F0" Offset="1" />
+        </LinearGradientBrush>
+
+        <!-- 封面顶部高光渐变 -->
+        <LinearGradientBrush x:Key="CoverGlossBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#33FFFFFF" Offset="0" />
+            <GradientStop Color="#00FFFFFF" Offset="0.35" />
+        </LinearGradientBrush>
+
+        <!-- 现代滚动条 Thumb 样式 -->
+        <Style x:Key="ModernScrollBarThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBorder" Background="#4A4A5E" CornerRadius="3" Margin="1,2" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#6BB3F0" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#4A90D9" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 现代滚动条样式（细、圆角、无箭头） -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Width" Value="8" />
+            <Setter Property="MinWidth" Value="8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="Transparent" CornerRadius="4">
+                            <Track Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource ModernScrollBarThumb}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="8" />
+                    <Setter Property="MinHeight" Value="8" />
+                    <Setter Property="Width" Value="NaN" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 卡片删除按钮样式 -->
         <Style x:Key="CardDeleteButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="28" />
@@ -58,16 +116,40 @@
 
         <!-- 顶部导航栏 -->
         <Border Grid.Row="0" Background="#2D2D3F" CornerRadius="0,0,16,16">
+            <Border.Effect>
+                <DropShadowEffect ShadowDepth="0" BlurRadius="12" Opacity="0.4" Color="#000000" Direction="270" />
+            </Border.Effect>
             <Grid Margin="32,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="EPUB 阅读器" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="EPUB 阅读器" FontSize="20" FontWeight="SemiBold"
                                Foreground="#E8E8EC" VerticalAlignment="Center"
-                               FontFamily="Microsoft YaHei" />
+                               FontFamily="Microsoft YaHei">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="LayoutTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform />
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <!-- 搜索框 -->
-                    <Border Background="#3A3A4A" CornerRadius="8" Height="34"
-                            VerticalAlignment="Center" Width="220" Margin="20,0,0,0">
-                        <Grid Margin="8,0">
+                    <Border Background="#3A3A4A" CornerRadius="10" Height="36"
+                            VerticalAlignment="Center" Width="240" Margin="24,0,0,0">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                        <Setter Property="BorderBrush" Value="#4A90D9" />
+                                        <Setter Property="BorderThickness" Value="1.5" />
+                                        <Setter Property="Background" Value="#33334A" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid Margin="10,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -104,10 +186,15 @@
                        Margin="24,20,24,24">
             <Grid>
                 <!-- 空状态提示 -->
-                <TextBlock Text="书架空空，点击「导入书籍」按钮添加 EPUB 文件"
-                           Foreground="#6B6B80" FontSize="18"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Visibility="{Binding Books.Count, Converter={StaticResource NullToVisibility}, ConverterParameter=invert}" />
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Visibility="{Binding Books.Count, Converter={StaticResource NullToVisibility}, ConverterParameter=invert}">
+                    <TextBlock Text="📚" FontSize="56" HorizontalAlignment="Center" Opacity="0.4" />
+                    <TextBlock Text="书架空空如也" Foreground="#8B8BA0" FontSize="20" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,16,0,8" />
+                    <TextBlock Text="点击「导入书籍」按钮或拖入 EPUB 文件开始阅读"
+                               Foreground="#6B6B80" FontSize="13"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
 
                 <!-- 书架网格 -->
                 <ItemsControl ItemsSource="{Binding BooksView}"
@@ -120,48 +207,50 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:Book}">
-                            <Grid Width="160" Height="250" Margin="16,16,16,16"
-                                   Cursor="Hand" ToolTip="{Binding Title}">
+                            <Grid Width="170" Height="265" Margin="16,16,16,16"
+                                   Cursor="Hand" ToolTip="{Binding Title}"
+                                   RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                                        <TranslateTransform Y="0" />
+                                    </TransformGroup>
+                                </Grid.RenderTransform>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Trigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" To="1.02" Duration="0:0:0.2" />
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" To="1.02" Duration="0:0:0.2" />
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)" To="-8" Duration="0:0:0.2" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.EnterActions>
+                                                <Trigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.2" />
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.2" />
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)" To="0" Duration="0:0:0.2" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.ExitActions>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
                                 <!-- 阴影层：偏移 + 半透明 -->
-                                <Border Margin="0,3,0,0" Background="#40000000"
+                                <Border Margin="0,4,0,0" Background="#40000000"
                                         CornerRadius="12" />
                                 <!-- 卡片主体层（带圆角裁剪，确保四角子内容不溢出） -->
-                                <Border Background="#2D2D3F" CornerRadius="12">
+                                <Border Background="#252535" CornerRadius="12">
                                     <Border.Clip>
                                         <RectangleGeometry RadiusX="12" RadiusY="12"
-                                                           Rect="0,0,160,250" />
+                                                           Rect="0,0,170,265" />
                                     </Border.Clip>
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="RenderTransform">
-                                                <Setter.Value>
-                                                    <TranslateTransform X="0" Y="0" />
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Trigger.EnterActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation
-                                                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                    To="-6" Duration="0:0:0.15" />
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.EnterActions>
-                                                    <Trigger.ExitActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation
-                                                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                                                                    To="0" Duration="0:0:0.15" />
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.ExitActions>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
 
                                     <Border.InputBindings>
                                     <MouseBinding Gesture="LeftClick"
@@ -185,13 +274,17 @@
                                             <Grid>
                                                 <Image Source="{Binding CoverPath, Converter={StaticResource CoverPathConverter}}"
                                                        Stretch="UniformToFill" />
+                                                <!-- 封面顶部高光渐变（模拟书脊光泽） -->
+                                                <Border Background="{StaticResource CoverGlossBrush}"
+                                                        VerticalAlignment="Top" Height="60"
+                                                        IsHitTestVisible="False" />
 
                                                 <!-- 阅读进度条（底部覆盖） -->
                                                 <Border VerticalAlignment="Bottom" Height="4"
                                                         Background="#55000000">
                                                     <ProgressBar Value="{Binding ReadProgressPercent, Mode=OneWay}"
                                                                  Maximum="100" Height="4"
-                                                                 Foreground="#4A90D9"
+                                                                 Foreground="{StaticResource ProgressGradientBrush}"
                                                                  Background="Transparent"
                                                                  BorderThickness="0"
                                                                  Visibility="{Binding ReadProgressPercent, Mode=OneWay, Converter={StaticResource ProgressToVisibility}}" />
@@ -202,15 +295,16 @@
                                         <!-- 书名和作者（带底部圆角裁剪） -->
                                         <Border Grid.Row="1" CornerRadius="0,0,12,12"
                                                 ClipToBounds="True"
-                                                Background="#2D2D3F">
-                                            <StackPanel VerticalAlignment="Center" Margin="10,6,10,8">
+                                                Background="#252535"
+                                                BorderBrush="#333A4A" BorderThickness="0,1,0,0">
+                                            <StackPanel VerticalAlignment="Center" Margin="12,8,12,10">
                                                 <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
                                                            Foreground="#E8E8EC" TextTrimming="CharacterEllipsis"
-                                                           MaxWidth="140" HorizontalAlignment="Center" />
+                                                           MaxWidth="146" HorizontalAlignment="Center" />
                                                 <TextBlock Text="{Binding Author}" FontSize="11"
-                                                           Foreground="#A0A0B0" TextTrimming="CharacterEllipsis"
-                                                           MaxWidth="140" HorizontalAlignment="Center"
-                                                           Margin="0,3,0,0" />
+                                                           Foreground="#8888A0" TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="146" HorizontalAlignment="Center"
+                                                           Margin="0,4,0,0" />
                                             </StackPanel>
                                         </Border>
                                     </Grid>
@@ -262,14 +356,36 @@
         <Border x:Name="DragOverlay" Grid.RowSpan="2"
                 Background="#664A90D9" Visibility="Collapsed"
                 IsHitTestVisible="False">
-            <Border CornerRadius="16" BorderBrush="#FFFFFF" BorderThickness="2"
-                    Background="#334A90D9" Width="400" Height="200"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border CornerRadius="20" BorderBrush="#FFFFFF" BorderThickness="2"
+                    Background="#334A90D9" Width="440" Height="220"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                </Border.RenderTransform>
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                         From="1" To="1.03" Duration="0:0:1.2" />
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         From="1" To="1.03" Duration="0:0:1.2" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center" />
+                    <TextBlock Text="📂" FontSize="52" HorizontalAlignment="Center" />
                     <TextBlock Text="释放鼠标导入 EPUB 文件" FontSize="18"
                                Foreground="#FFFFFF" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" Margin="0,12,0,0" />
+                               HorizontalAlignment="Center" Margin="0,16,0,0" />
+                    <TextBlock Text="支持批量导入" FontSize="12" Foreground="#B0D0F0"
+                               HorizontalAlignment="Center" Margin="0,6,0,0" Opacity="0.8" />
                 </StackPanel>
             </Border>
         </Border>

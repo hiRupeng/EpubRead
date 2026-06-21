@@ -8,32 +8,56 @@
       KeyDown="OnPageKeyDown">
 
     <Page.Resources>
+        <!-- ═══ 渐变画刷资源 ═══ -->
+        <LinearGradientBrush x:Key="ProgressBarGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#4A90D9" Offset="0" />
+            <GradientStop Color="#6BB3F0" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="DividerGradientBrush" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#003A3A4A" Offset="0" />
+            <GradientStop Color="#3A3A4A" Offset="0.5" />
+            <GradientStop Color="#003A3A4A" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="ProgressCapsuleBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#32324A" Offset="0" />
+            <GradientStop Color="#28283C" Offset="1" />
+        </LinearGradientBrush>
+
         <!-- 目录项按钮样式 -->
         <Style x:Key="TocItemStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#C0C0D0" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Padding" Value="16,8" />
-            <Setter Property="Margin" Value="4,2" />
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Margin" Value="4,3" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                CornerRadius="6"
-                                Padding="{TemplateBinding Padding}"
-                                Margin="{TemplateBinding Margin}">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="Center" />
-                        </Border>
+                        <Grid>
+                            <!-- 左侧竖条指示器（悬浮显示） -->
+                            <Border x:Name="LeftIndicator" Width="3" CornerRadius="1.5"
+                                    Background="#6BB3F0" HorizontalAlignment="Left"
+                                    Margin="0,4,0,4" Opacity="0" />
+                            <Border Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    Margin="{TemplateBinding Margin}">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#3A3A4A" />
+                                <Setter Property="Background" Value="#32324A" />
+                                <Setter TargetName="LeftIndicator" Property="Opacity" Value="1" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#4A4A5E" />
+                                <Setter Property="Background" Value="#3A3A52" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -108,14 +132,18 @@
 
         <!-- 主题色圆形选择器 -->
         <Style x:Key="ThemeCircleStyle" TargetType="RadioButton">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="36" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="BorderThickness" Value="2" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Grid>
+                            <!-- 外圈光晕（选中时显示） -->
+                            <Border Width="44" Height="44" CornerRadius="22"
+                                    Background="#336BB3F0" Opacity="0" x:Name="GlowRing"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <Border Width="36" Height="36" CornerRadius="18"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
@@ -128,6 +156,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="CheckMark" Property="Opacity" Value="1" />
+                                <Setter TargetName="GlowRing" Property="Opacity" Value="1" />
                                 <Setter Property="BorderBrush" Value="White" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -204,6 +233,9 @@
 
             <!-- 顶部工具栏 -->
             <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#2D2D3F" Panel.ZIndex="10">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="0" BlurRadius="10" Opacity="0.35" Color="#000000" Direction="270" />
+                </Border.Effect>
                 <Grid Margin="12,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Button Content="← 书架" Style="{StaticResource ReaderButtonStyle}"
@@ -213,7 +245,17 @@
                     <TextBlock Text="{Binding BookTitle}" FontSize="16" FontWeight="Medium"
                                Foreground="#E8E8EC" HorizontalAlignment="Center"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                               MaxWidth="400" />
+                               MaxWidth="400">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="LayoutTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform />
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button Content="A−" Style="{StaticResource ReaderButtonStyle}"
@@ -233,10 +275,10 @@
             </Border>
 
             <!-- 顶部进度条 -->
-            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#262636" Height="3">
+            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#262636" Height="2">
                 <ProgressBar Value="{Binding TopProgress}" Maximum="1" Minimum="0"
-                             Foreground="#4A90D9" Background="Transparent"
-                             BorderThickness="0" Height="3" />
+                             Foreground="{StaticResource ProgressBarGradient}" Background="Transparent"
+                             BorderThickness="0" Height="2" />
             </Border>
 
             <!-- 右侧目录面板（可折叠侧栏，与设置面板共享右列，互斥显示） -->
@@ -252,8 +294,11 @@
 
                     <Border Grid.Row="0" BorderBrush="#3A3A4A" BorderThickness="0,0,0,1"
                             Padding="16,0">
-                        <TextBlock Text="章节目录" Foreground="#A0A0B0" FontSize="13"
-                                   VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="📖" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="章节目录" Foreground="#C0C0D0" FontSize="13"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
                     </Border>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -362,10 +407,10 @@
                         <Button Content="◀ 上一章" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding NavigatePrevCommand}"
                                 IsEnabled="{Binding HasPrev}" />
-                        <Border Background="#3A3A4A" CornerRadius="12"
-                                Padding="20,6" Margin="16,0">
-                            <TextBlock Text="{Binding ProgressText}" Foreground="#A0A0B0"
-                                       FontSize="13" />
+                        <Border Background="{StaticResource ProgressCapsuleBrush}" CornerRadius="14"
+                                Padding="22,7" Margin="16,0">
+                            <TextBlock Text="{Binding ProgressText}" Foreground="#B0B0C8"
+                                       FontSize="13" FontWeight="Medium" />
                         </Border>
                         <Button Content="下一章 ▶" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding NavigateNextCommand}"
@@ -374,8 +419,9 @@
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 VerticalAlignment="Center">
-                        <TextBlock Foreground="#6BB3F0" FontSize="11" Opacity="0.7"
+                        <TextBlock Foreground="#6BB3F0" FontSize="11" Opacity="0.75"
                                    VerticalAlignment="Center">
+                            <Run Text="🔤 " />
                             <Run Text="{Binding FontSize, StringFormat={}{0}px}" />
                             <Run Text=" · " />
                             <Run Text="{Binding NavigationMode, Converter={StaticResource NavModeToTextConverter}}" />
@@ -393,8 +439,12 @@
 
                             <!-- 面板标题 -->
                             <Grid Margin="0,0,0,16">
-                                <TextBlock Text="阅读设置" Foreground="#E8E8EC" FontSize="16"
-                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="⚙" FontSize="16" Foreground="#6BB3F0"
+                                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="阅读设置" Foreground="#E8E8EC" FontSize="16"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <Button Content="✕" Style="{StaticResource ReaderButtonStyle}"
                                         HorizontalAlignment="Right" Padding="8,4"
                                         Command="{Binding ToggleSettingsCommand}" />
@@ -406,18 +456,21 @@
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
                                              Background="#F5F0E8" BorderBrush="#888"
                                              GroupName="Theme"
+                                             IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=Day}"
                                              Command="{Binding SetThemeCommand}"
                                              CommandParameter="{x:Static models:ThemeType.Day}"
                                              ToolTip="白天模式" Margin="0,0,12,0" />
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
                                              Background="#1A1A2E" BorderBrush="#555"
                                              GroupName="Theme"
+                                             IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=Night}"
                                              Command="{Binding SetThemeCommand}"
                                              CommandParameter="{x:Static models:ThemeType.Night}"
                                              ToolTip="夜晚模式" Margin="0,0,12,0" />
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
                                              Background="#C7EDCC" BorderBrush="#888"
                                              GroupName="Theme"
+                                             IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=EyeCare}"
                                              Command="{Binding SetThemeCommand}"
                                              CommandParameter="{x:Static models:ThemeType.EyeCare}"
                                              ToolTip="护眼模式" />
@@ -451,14 +504,17 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="衬线"
                                              GroupName="Font"
+                                             IsChecked="{Binding SelectedFontFamily, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Serif}"
                                              Command="{Binding SetFontFamilyCommand}"
                                              CommandParameter="{x:Static models:FontFamilyOption.Serif}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="无衬线"
                                              GroupName="Font"
+                                             IsChecked="{Binding SelectedFontFamily, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=SansSerif}"
                                              Command="{Binding SetFontFamilyCommand}"
                                              CommandParameter="{x:Static models:FontFamilyOption.SansSerif}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="等宽"
                                              GroupName="Font"
+                                             IsChecked="{Binding SelectedFontFamily, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Monospace}"
                                              Command="{Binding SetFontFamilyCommand}"
                                              CommandParameter="{x:Static models:FontFamilyOption.Monospace}" />
                             </StackPanel>
@@ -470,14 +526,17 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="紧凑"
                                              GroupName="LineHeight"
+                                             IsChecked="{Binding SelectedLineHeight, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Compact}"
                                              Command="{Binding SetLineHeightCommand}"
                                              CommandParameter="{x:Static models:LineHeightOption.Compact}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="标准"
                                              GroupName="LineHeight"
+                                             IsChecked="{Binding SelectedLineHeight, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Normal}"
                                              Command="{Binding SetLineHeightCommand}"
                                              CommandParameter="{x:Static models:LineHeightOption.Normal}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="宽松"
                                              GroupName="LineHeight"
+                                             IsChecked="{Binding SelectedLineHeight, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Loose}"
                                              Command="{Binding SetLineHeightCommand}"
                                              CommandParameter="{x:Static models:LineHeightOption.Loose}" />
                             </StackPanel>
@@ -489,14 +548,17 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="窄"
                                              GroupName="PageWidth"
+                                             IsChecked="{Binding SelectedPageWidth, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Narrow}"
                                              Command="{Binding SetPageWidthCommand}"
                                              CommandParameter="{x:Static models:PageWidthOption.Narrow}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="中"
                                              GroupName="PageWidth"
+                                             IsChecked="{Binding SelectedPageWidth, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Medium}"
                                              Command="{Binding SetPageWidthCommand}"
                                              CommandParameter="{x:Static models:PageWidthOption.Medium}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="宽"
                                              GroupName="PageWidth"
+                                             IsChecked="{Binding SelectedPageWidth, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Wide}"
                                              Command="{Binding SetPageWidthCommand}"
                                              CommandParameter="{x:Static models:PageWidthOption.Wide}" />
                             </StackPanel>
@@ -508,10 +570,12 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="🔖 小节"
                                              GroupName="NavMode"
+                                             IsChecked="{Binding NavigationMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=BySection}"
                                              Command="{Binding SwitchNavigationModeCommand}"
                                              CommandParameter="{x:Static models:NavigationMode.BySection}" Margin="0,0,8,0" />
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="📄 文件"
                                              GroupName="NavMode"
+                                             IsChecked="{Binding NavigationMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=BySpineFile}"
                                              Command="{Binding SwitchNavigationModeCommand}"
                                              CommandParameter="{x:Static models:NavigationMode.BySpineFile}" />
                             </StackPanel>

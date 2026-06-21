@@ -67,28 +67,10 @@ public class EpubParser
     public string LoadChapterContent(string epubFilePath, string basePath, string href)
     {
         using var archive = ZipFile.OpenRead(epubFilePath);
-        var fullPath = NormalizeZipPath(basePath + href);
-        var entry = archive.GetEntry(fullPath);
+        var entry = FindEntry(archive, basePath, href);
 
         if (entry == null)
-        {
-            // 尝试移除 basePath 前缀（兼容 href 已包含 basePath 的情况）
-            if (!string.IsNullOrEmpty(basePath) && fullPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
-            {
-                var altPath = fullPath[basePath.Length..];
-                entry = archive.GetEntry(altPath);
-            }
-
-            // 尝试 ZIP 根路径直接查找
-            if (entry == null)
-            {
-                var hrefClean = href.Replace("\\", "/").TrimStart('/');
-                entry = archive.GetEntry(hrefClean);
-            }
-
-            if (entry == null)
-                return "<p>内容加载失败</p>";
-        }
+            return "<p>内容加载失败</p>";
 
         using var stream = entry.Open();
         using var reader = new StreamReader(stream);
@@ -104,15 +86,7 @@ public class EpubParser
             return (null, "");
 
         using var archive = ZipFile.OpenRead(epubFilePath);
-        var fullPath = NormalizeZipPath(resourcePath);
-        var entry = archive.GetEntry(fullPath);
-
-        // 兜底：尝试原始路径（去除前导斜杠）
-        if (entry == null)
-        {
-            var raw = resourcePath.Replace("\\", "/").TrimStart('/');
-            entry = archive.GetEntry(raw);
-        }
+        var entry = FindEntry(archive, "", resourcePath);
 
         if (entry == null)
             return (null, "");
@@ -120,7 +94,56 @@ public class EpubParser
         using var stream = entry.Open();
         using var ms = new MemoryStream();
         stream.CopyTo(ms);
-        return (ms.ToArray(), GetMediaType(fullPath));
+        return (ms.ToArray(), GetMediaType(entry.FullName));
+    }
+
+    /// <summary>
+    /// 在 ZIP 中查找条目，依次尝试多种路径组合，最后做不区分大小写的匹配兜底。
+    /// 解决部分 EPUB 制作工具导致的目录 href 与 ZIP 条目大小写不一致问题。
+    /// </summary>
+    private static ZipArchiveEntry? FindEntry(ZipArchive archive, string basePath, string href)
+    {
+        // 候选路径列表（按优先级排序）
+        var candidates = new List<string>();
+
+        // 1. basePath + href 规范化
+        var fullPath = NormalizeZipPath(basePath + href);
+        candidates.Add(fullPath);
+
+        // 2. 去除 basePath 前缀
+        if (!string.IsNullOrEmpty(basePath) && fullPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+            candidates.Add(fullPath[basePath.Length..]);
+
+        // 3. href 去除前导斜杠
+        var hrefClean = href.Replace("\\", "/").TrimStart('/');
+        candidates.Add(hrefClean);
+
+        // 4. 仅文件名（忽略目录前缀）
+        var fileName = Path.GetFileName(hrefClean);
+        if (!string.IsNullOrEmpty(fileName))
+            candidates.Add(fileName);
+
+        // 先用大小写敏感的 GetEntry 快速查找（性能优）
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var entry = archive.GetEntry(candidate);
+            if (entry != null) return entry;
+        }
+
+        // 全部失败：遍历条目做不区分大小写的匹配（兜底，处理大小写不一致）
+        var lookup = new HashSet<string>(candidates, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in archive.Entries)
+        {
+            if (lookup.Contains(entry.FullName))
+                return entry;
+
+            // 文件名匹配（部分 EPUB 的 href 仅文件名，但 ZIP 中带目录前缀，或反之）
+            if (!string.IsNullOrEmpty(fileName) &&
+                string.Equals(Path.GetFileName(entry.FullName), fileName, StringComparison.OrdinalIgnoreCase))
+                return entry;
+        }
+
+        return null;
     }
 
     /// <summary>根据文件扩展名推断 MIME 类型</summary>
@@ -615,6 +638,10 @@ public class EpubParser
             anchor = result[(hashIndex + 1)..];
             result = result[..hashIndex];
         }
+
+        // URL 解码：部分 EPUB 制作工具（如 calibre）会将 src 中的空格、括号等编码为 %20/%28/%29，
+        // 而 ZIP 内文件名是未编码的，不解码会导致 GetEntry 查找失败
+        result = Uri.UnescapeDataString(result);
 
         // 去掉开头的 ./
         while (result.StartsWith("./"))
