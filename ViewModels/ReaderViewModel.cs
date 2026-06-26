@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -52,13 +53,18 @@ public partial class ReaderViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasNext;
 
-    [ObservableProperty]
-    private NavigationMode _navigationMode = Models.NavigationMode.BySection;
-
     // ─── 阅读设置 ───
 
     [ObservableProperty]
     private ThemeType _selectedTheme = ThemeType.Day;
+
+    /// <summary>当前界面主题配色（随 SelectedTheme 自动更新）</summary>
+    [ObservableProperty]
+    private ReaderUITheme _uiTheme = ReaderUITheme.Build(ThemeType.Day);
+
+    /// <summary>主题变化时同步更新界面配色</summary>
+    partial void OnSelectedThemeChanged(ThemeType value)
+        => UiTheme = ReaderUITheme.Build(value);
 
     [ObservableProperty]
     private int _fontSize = 17;
@@ -100,33 +106,79 @@ public partial class ReaderViewModel : ObservableObject
     /// <summary>
     /// 加载 EPUB 书籍并导航到上次阅读位置或第一章
     /// </summary>
-    public void LoadBook(Book book)
+    public bool LoadBook(Book book)
     {
         _filePath = book.FilePath;
         BookTitle = book.Title;
 
-        // 先加载阅读设置
-        var savedSettings = _settingsService.LoadSettings();
-        ApplySettings(savedSettings);
+        // 检查文件是否存在
+        if (!File.Exists(_filePath))
+        {
+            BookTitle = "文件不存在";
+            ContentRequested?.Invoke(this, GenerateErrorHtml(
+                $"<b>文件不存在</b><br/><br/>路径：{System.Net.WebUtility.HtmlEncode(_filePath)}<br/><br/>文件可能已被移动、重命名或删除。"));
+            return false;
+        }
 
-        _epubBook = _epubParser.Parse(_filePath);
+        try
+        {
+            // 先加载阅读设置
+            var savedSettings = _settingsService.LoadSettings();
+            ApplySettings(savedSettings);
 
-        TocChapters.Clear();
-        FlatChapters.Clear();
+            _epubBook = _epubParser.Parse(_filePath);
 
-        foreach (var ch in _epubBook.Chapters)
-            TocChapters.Add(ch);
-        foreach (var ch in _epubBook.FlatChapters)
-            FlatChapters.Add(ch);
+            TocChapters.Clear();
+            FlatChapters.Clear();
 
-        if (FlatChapters.Count == 0) return;
+            foreach (var ch in _epubBook.Chapters)
+                TocChapters.Add(ch);
+            foreach (var ch in _epubBook.FlatChapters)
+                FlatChapters.Add(ch);
 
-        // 恢复上次阅读位置
-        int startIndex = book.LastReadChapterIndex;
-        if (startIndex >= 0 && startIndex < FlatChapters.Count)
-            NavigateToChapter(FlatChapters[startIndex]);
-        else
-            NavigateToChapter(FlatChapters[0]);
+            if (FlatChapters.Count == 0)
+            {
+                ContentRequested?.Invoke(this, GenerateErrorHtml("该 EPUB 文件中没有可读取的章节内容。"));
+                return false;
+            }
+
+            // 恢复上次阅读位置
+            int startIndex = book.LastReadChapterIndex;
+            if (startIndex >= 0 && startIndex < FlatChapters.Count)
+                NavigateToChapter(FlatChapters[startIndex]);
+            else
+                NavigateToChapter(FlatChapters[0]);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            BookTitle = "加载失败";
+            ContentRequested?.Invoke(this, GenerateErrorHtml(
+                $"<b>加载 EPUB 失败</b><br/><br/>{System.Net.WebUtility.HtmlEncode(ex.Message)}"));
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 生成错误提示页面 HTML
+    /// </summary>
+    private string GenerateErrorHtml(string message)
+    {
+        var (bg, color, _, _) = GetThemeColors();
+        return $$"""
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"></head>
+            <body style="background:{{bg}};display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+            <div style="text-align:center;color:{{color}};font-family:'Microsoft YaHei',sans-serif;
+                        padding:40px;max-width:600px;line-height:1.8;">
+                <div style="font-size:48px;margin-bottom:16px;opacity:0.5;">⚠️</div>
+                <div style="font-size:16px;opacity:0.8;">{{message}}</div>
+            </div>
+            </body>
+            </html>
+            """;
     }
 
     private void ApplySettings(ReadingSettings s)
@@ -136,7 +188,6 @@ public partial class ReaderViewModel : ObservableObject
         SelectedFontFamily = s.FontFamily;
         SelectedLineHeight = s.LineHeight;
         SelectedPageWidth = s.PageWidth;
-        NavigationMode = s.NavigationMode;
     }
 
     private ReadingSettings CollectSettings() => new()
@@ -145,8 +196,7 @@ public partial class ReaderViewModel : ObservableObject
         FontSize = FontSize,
         FontFamily = SelectedFontFamily,
         LineHeight = SelectedLineHeight,
-        PageWidth = SelectedPageWidth,
-        NavigationMode = NavigationMode
+        PageWidth = SelectedPageWidth
     };
 
     private void SaveCurrentSettings()
@@ -177,12 +227,29 @@ public partial class ReaderViewModel : ObservableObject
     {
         if (chapter == null || _epubBook == null) return;
 
-        chapter.Content = _epubParser.LoadChapterContent(
-            _filePath, _epubBook.BasePath, chapter.Href);
+        // 加载完整章节内容：一个逻辑章节可能跨多个 spine 文件，
+        // 需要从当前文件加载到下一个目录条目对应的文件为止
+        var fileHrefs = ComputeFullContentFiles(chapter);
+        string bodyContent;
 
+        if (fileHrefs.Count <= 1)
+        {
+            // 单文件：走原有路径
+            var raw = _epubParser.LoadChapterContent(_filePath, _epubBook.BasePath, chapter.Href);
+            bodyContent = ExtractBodyContent(raw);
+        }
+        else
+        {
+            // 多文件：分别提取 body 后拼接，避免多个 <body> 标签干扰正则
+            var rawParts = _epubParser.LoadMultiFileRawContent(
+                _filePath, _epubBook.BasePath, fileHrefs);
+            bodyContent = string.Join("\n", rawParts.Select(ExtractBodyContent));
+        }
+
+        chapter.Content = bodyContent;
         CurrentChapter = chapter;
 
-        var styledContent = GenerateReadingStyle(chapter.Content ?? "<p>内容为空</p>", chapter.Href);
+        var styledContent = GenerateReadingStyleFromBody(bodyContent, chapter.Href);
         ContentRequested?.Invoke(this, styledContent);
 
         if (!string.IsNullOrEmpty(chapter.Anchor))
@@ -195,6 +262,55 @@ public partial class ReaderViewModel : ObservableObject
         var idx = FlatChapters.IndexOf(chapter);
         if (idx >= 0)
             ProgressChanged?.Invoke(this, (idx, FlatChapters.Count));
+    }
+
+    /// <summary>
+    /// 计算某章节应加载的所有 spine 文件列表。
+    /// 从该章节对应的 spine 文件开始，加载后续文件直到遇到下一个目录条目对应的文件为止。
+    /// 这样可以正确加载被拆分到多个文件中的完整章节内容。
+    /// </summary>
+    private List<string> ComputeFullContentFiles(Chapter chapter)
+    {
+        if (_epubBook == null || _epubBook.SpineFiles.Count == 0)
+            return [chapter.Href];
+
+        return ComputeFullContentFilesByHref(chapter.Href);
+    }
+
+    /// <summary>
+    /// 根据 href 计算应加载的所有 spine 文件列表（兜底场景使用）。
+    /// </summary>
+    private List<string> ComputeFullContentFilesByHref(string href)
+    {
+        if (_epubBook == null || _epubBook.SpineFiles.Count == 0)
+            return [href];
+
+        var spineFiles = _epubBook.SpineFiles;
+
+        // 找到当前文件在 spine 中的位置
+        var startIndex = spineFiles.FindIndex(f =>
+            string.Equals(f, href, StringComparison.OrdinalIgnoreCase));
+        if (startIndex < 0)
+            return [href];
+
+        // 收集所有目录条目对应的文件 href（用于确定章节边界）
+        var tocStartFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ch in _epubBook.FlatChapters)
+        {
+            if (!string.IsNullOrEmpty(ch.Href))
+                tocStartFiles.Add(ch.Href);
+        }
+
+        // 从 startIndex 开始，加载后续文件直到遇到另一个目录条目的起始文件
+        var result = new List<string> { spineFiles[startIndex] };
+        for (int i = startIndex + 1; i < spineFiles.Count; i++)
+        {
+            if (tocStartFiles.Contains(spineFiles[i]))
+                break;
+            result.Add(spineFiles[i]);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -235,18 +351,39 @@ public partial class ReaderViewModel : ObservableObject
             }
         }
 
-        // 2) 兜底：直接按路径加载章节内容
+        // 2) 兜底：直接按路径加载章节内容（含跨文件拼接）
         foreach (var candidate in candidates)
         {
             var simpleHref = candidate;
             if (simpleHref.StartsWith(_epubBook.BasePath, StringComparison.OrdinalIgnoreCase))
                 simpleHref = simpleHref[_epubBook.BasePath.Length..];
 
-            var content = _epubParser.LoadChapterContent(_filePath, _epubBook.BasePath, simpleHref);
-            if (!string.IsNullOrEmpty(content) &&
-                !content.Equals("<p>内容加载失败</p>", StringComparison.Ordinal))
+            // 规范化路径用于在 spine 中查找
+            var normalizedHref = EpubParser.NormalizePath(simpleHref);
+
+            // 计算该 href 在 spine 中的完整文件范围
+            var fileHrefs = ComputeFullContentFilesByHref(normalizedHref);
+            string bodyContent;
+
+            if (fileHrefs.Count <= 1)
             {
-                var styled = GenerateReadingStyle(content, simpleHref);
+                var raw = _epubParser.LoadChapterContent(_filePath, _epubBook.BasePath, simpleHref);
+                if (string.IsNullOrEmpty(raw) ||
+                    raw.Equals("<p>内容加载失败</p>", StringComparison.Ordinal))
+                    continue;
+                bodyContent = ExtractBodyContent(raw);
+            }
+            else
+            {
+                var rawParts = _epubParser.LoadMultiFileRawContent(
+                    _filePath, _epubBook.BasePath, fileHrefs);
+                if (rawParts.Count == 0) continue;
+                bodyContent = string.Join("\n", rawParts.Select(ExtractBodyContent));
+            }
+
+            if (!string.IsNullOrWhiteSpace(bodyContent))
+            {
+                var styled = GenerateReadingStyleFromBody(bodyContent, simpleHref);
                 ContentRequested?.Invoke(this, styled);
                 if (!string.IsNullOrEmpty(anchorPart))
                     ScrollToAnchorRequested?.Invoke(this, anchorPart);
@@ -285,34 +422,14 @@ public partial class ReaderViewModel : ObservableObject
     private void NavigatePrev()
     {
         if (CurrentChapter == null) return;
-
-        if (NavigationMode == Models.NavigationMode.BySection)
-        {
-            var idx = FlatChapters.IndexOf(CurrentChapter);
-            if (idx > 0)
-                NavigateToChapter(FlatChapters[idx - 1]);
-        }
-        else
-        {
-            NavigateToPrevSpineRoot();
-        }
+        NavigateToPrevSpineRoot();
     }
 
     [RelayCommand]
     private void NavigateNext()
     {
         if (CurrentChapter == null) return;
-
-        if (NavigationMode == Models.NavigationMode.BySection)
-        {
-            var idx = FlatChapters.IndexOf(CurrentChapter);
-            if (idx < FlatChapters.Count - 1)
-                NavigateToChapter(FlatChapters[idx + 1]);
-        }
-        else
-        {
-            NavigateToNextSpineRoot();
-        }
+        NavigateToNextSpineRoot();
     }
 
     private void NavigateToPrevSpineRoot()
@@ -375,39 +492,18 @@ public partial class ReaderViewModel : ObservableObject
     {
         if (CurrentChapter == null) return;
 
-        if (NavigationMode == Models.NavigationMode.BySection)
-        {
-            var idx = FlatChapters.IndexOf(CurrentChapter);
-            HasPrev = idx > 0;
-            HasNext = idx < FlatChapters.Count - 1;
-            ProgressText = $"第 {idx + 1} / {FlatChapters.Count} 章";
-            TopProgress = FlatChapters.Count > 1 ? (double)(idx + 1) / FlatChapters.Count : 0;
-            ProgressPercentText = $"{(int)(TopProgress * 100)}%";
-        }
-        else
-        {
-            var group = GetCurrentSpineGroup();
-            var firstIdx = group.Count > 0 ? FlatChapters.IndexOf(group[0]) : -1;
-            var totalFiles = FlatChapters.Count(c => c.IsSpineRoot);
-            var currentFileIndex = FlatChapters.TakeWhile(c => c != group[0])
-                .Count(c => c.IsSpineRoot);
+        var group = GetCurrentSpineGroup();
+        var firstIdx = group.Count > 0 ? FlatChapters.IndexOf(group[0]) : -1;
+        var totalFiles = FlatChapters.Count(c => c.IsSpineRoot);
+        var currentFileIndex = group.Count > 0
+            ? FlatChapters.TakeWhile(c => c != group[0]).Count(c => c.IsSpineRoot)
+            : 0;
 
-            HasPrev = firstIdx > 0;
-            HasNext = firstIdx < FlatChapters.Count - 1;
-            ProgressText = $"第 {currentFileIndex + 1} / {totalFiles} 个文件";
-            TopProgress = totalFiles > 0 ? (double)(currentFileIndex + 1) / totalFiles : 0;
-            ProgressPercentText = $"{(int)(TopProgress * 100)}%";
-        }
-    }
-
-    // ─── 导航模式切换 ───
-
-    [RelayCommand]
-    private void SwitchNavigationMode(NavigationMode mode)
-    {
-        NavigationMode = mode;
-        UpdateNavigation();
-        SaveCurrentSettings();
+        HasPrev = firstIdx > 0;
+        HasNext = firstIdx < FlatChapters.Count - 1;
+        ProgressText = $"{currentFileIndex + 1} / {totalFiles}";
+        TopProgress = totalFiles > 0 ? (double)(currentFileIndex + 1) / totalFiles : 0;
+        ProgressPercentText = $"{(int)(TopProgress * 100)}%";
     }
 
     // ─── 阅读设置命令 ───
@@ -508,6 +604,15 @@ public partial class ReaderViewModel : ObservableObject
     private string GenerateReadingStyle(string content, string? fileHref = null)
     {
         var bodyContent = ExtractBodyContent(content);
+        return GenerateReadingStyleFromBody(bodyContent, fileHref);
+    }
+
+    /// <summary>
+    /// 从已提取的 body 内容生成完整的阅读页面 HTML。
+    /// 用于多文件拼接场景，避免对拼接后的内容重复提取 body。
+    /// </summary>
+    private string GenerateReadingStyleFromBody(string bodyContent, string? fileHref = null)
+    {
         var (bg, color, hColor, blockquoteColor) = GetThemeColors();
         var fontFamily = GetFontFamilyCss();
         var lineHeight = GetLineHeightCss();
@@ -608,10 +713,10 @@ public partial class ReaderViewModel : ObservableObject
     {
         return SelectedTheme switch
         {
-            ThemeType.Day => ("#F5F0E8", "#333333", "#2C2C3A", "#4A90D9"),
-            ThemeType.Night => ("#1A1A2E", "#C8C8D4", "#E0E0EC", "#6BB3F0"),
-            ThemeType.EyeCare => ("#C7EDCC", "#3A4A3A", "#2C3A2C", "#4CAF50"),
-            _ => ("#F5F0E8", "#333333", "#2C2C3A", "#4A90D9")
+            ThemeType.Day => ("#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4"),
+            ThemeType.Night => ("#202020", "#D4D4D4", "#FFFFFF", "#60CDFF"),
+            ThemeType.EyeCare => ("#F5E6C8", "#3D3522", "#2D2519", "#8B6914"),
+            _ => ("#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4")
         };
     }
 

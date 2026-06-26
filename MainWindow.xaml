@@ -6,84 +6,10 @@
         xmlns:local="clr-namespace:EpubRead"
         mc:Ignorable="d"
         Title="EPUB 阅读器" Height="800" Width="1200"
-        Icon="epub-icon.png"
+        Icon="app.ico"
         MinHeight="600" MinWidth="900"
-        Background="Transparent"
-        WindowStyle="None"
-        AllowsTransparency="True"
         WindowStartupLocation="CenterScreen">
 
-    <!-- 窗口圆角外层容器 -->
-    <Border Background="#1E1E2E" CornerRadius="10">
-
-    <!-- 自定义标题栏 + 内容区 -->
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="32" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- 自定义标题栏 -->
-        <Border Grid.Row="0" Background="#2D2D3F" CornerRadius="10,10,0,0">
-            <Grid>
-                <!-- 窗口控制按钮 -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Margin="0,0,4,0">
-                    <Button x:Name="MinimizeBtn" Content="&#xE921;"
-                            Width="46" Height="32" FontFamily="Segoe MDL2 Assets"
-                            FontSize="10" Background="Transparent"
-                            Foreground="#A0A0B0" BorderThickness="0"
-                            Cursor="Hand" Click="OnMinimizeClick">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#3A3A4A" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button x:Name="MaximizeBtn" Content="&#xE922;"
-                            Width="46" Height="32" FontFamily="Segoe MDL2 Assets"
-                            FontSize="10" Background="Transparent"
-                            Foreground="#A0A0B0" BorderThickness="0"
-                            Cursor="Hand" Click="OnMaximizeClick">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#3A3A4A" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button x:Name="CloseBtn" Content="&#xE8BB;"
-                            Width="46" Height="32" FontFamily="Segoe MDL2 Assets"
-                            FontSize="10" Background="Transparent"
-                            Foreground="#A0A0B0" BorderThickness="0"
-                            Cursor="Hand" Click="OnCloseClick">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#E8114B" />
-                                        <Setter Property="Foreground" Value="#FFFFFF" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- 内容区域 -->
-        <Frame x:Name="MainFrame" Grid.Row="1" NavigationUIVisibility="Hidden" />
-    </Grid>
-</Border>
+    <!-- 内容区域 -->
+    <Frame x:Name="MainFrame" NavigationUIVisibility="Hidden" />
 </Window>

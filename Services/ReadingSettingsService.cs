@@ -17,7 +17,7 @@ public class ReadingSettingsService
     }
 
     /// <summary>
-    /// 创建 ReadingSettings 表（如不存在）
+    /// 创建 ReadingSettings 表（如不存在），并对旧版数据库执行列迁移
     /// </summary>
     public void InitializeTable()
     {
@@ -32,19 +32,39 @@ public class ReadingSettingsService
                 FontSize              INTEGER NOT NULL DEFAULT 17,
                 FontFamily            INTEGER NOT NULL DEFAULT 0,
                 LineHeight            INTEGER NOT NULL DEFAULT 1,
-                PageWidth             INTEGER NOT NULL DEFAULT 1,
-                NavigationMode        INTEGER NOT NULL DEFAULT 0
+                PageWidth             INTEGER NOT NULL DEFAULT 1
             )
             """;
         cmd.ExecuteNonQuery();
 
+        // 迁移：为旧版（缺少新增列的）数据库补齐列，兼容已存在的表结构
+        EnsureColumn(connection, "PageWidth", "INTEGER NOT NULL DEFAULT 1");
+
         // 确保默认行存在
         var insertCmd = connection.CreateCommand();
         insertCmd.CommandText = """
-            INSERT OR IGNORE INTO ReadingSettings (Id, Theme, FontSize, FontFamily, LineHeight, PageWidth, NavigationMode)
-            VALUES ('default', 0, 17, 0, 1, 1, 0)
+            INSERT OR IGNORE INTO ReadingSettings (Id, Theme, FontSize, FontFamily, LineHeight, PageWidth)
+            VALUES ('default', 0, 17, 0, 1, 1)
             """;
         insertCmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 检查并补齐缺失的列。若指定列不存在则通过 ALTER TABLE 添加。
+    /// </summary>
+    private static void EnsureColumn(SqliteConnection connection, string columnName, string columnDef)
+    {
+        var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('ReadingSettings') WHERE name = @name";
+        checkCmd.Parameters.AddWithValue("@name", columnName);
+
+        var exists = Convert.ToInt64(checkCmd.ExecuteScalar()) > 0;
+        if (exists)
+            return;
+
+        var alterCmd = connection.CreateCommand();
+        alterCmd.CommandText = $"ALTER TABLE ReadingSettings ADD COLUMN {columnName} {columnDef}";
+        alterCmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -56,7 +76,7 @@ public class ReadingSettingsService
         connection.Open();
 
         var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Theme, FontSize, FontFamily, LineHeight, PageWidth, NavigationMode FROM ReadingSettings WHERE Id = 'default'";
+        cmd.CommandText = "SELECT Theme, FontSize, FontFamily, LineHeight, PageWidth FROM ReadingSettings WHERE Id = 'default'";
 
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
@@ -67,8 +87,7 @@ public class ReadingSettingsService
                 FontSize = reader.GetInt32(1),
                 FontFamily = (FontFamilyOption)reader.GetInt32(2),
                 LineHeight = (LineHeightOption)reader.GetInt32(3),
-                PageWidth = (PageWidthOption)reader.GetInt32(4),
-                NavigationMode = (NavigationMode)reader.GetInt32(5)
+                PageWidth = (PageWidthOption)reader.GetInt32(4)
             };
         }
 
@@ -90,8 +109,7 @@ public class ReadingSettingsService
                 FontSize = @fontSize,
                 FontFamily = @fontFamily,
                 LineHeight = @lineHeight,
-                PageWidth = @pageWidth,
-                NavigationMode = @navigationMode
+                PageWidth = @pageWidth
             WHERE Id = 'default'
             """;
         cmd.Parameters.AddWithValue("@theme", (int)settings.Theme);
@@ -99,7 +117,6 @@ public class ReadingSettingsService
         cmd.Parameters.AddWithValue("@fontFamily", (int)settings.FontFamily);
         cmd.Parameters.AddWithValue("@lineHeight", (int)settings.LineHeight);
         cmd.Parameters.AddWithValue("@pageWidth", (int)settings.PageWidth);
-        cmd.Parameters.AddWithValue("@navigationMode", (int)settings.NavigationMode);
         cmd.ExecuteNonQuery();
     }
 }

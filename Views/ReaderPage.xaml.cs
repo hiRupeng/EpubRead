@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using EpubRead.Models;
 using EpubRead.ViewModels;
 
@@ -23,10 +24,87 @@ public partial class ReaderPage : System.Windows.Controls.Page
         _viewModel.ScrollToAnchorRequested += OnScrollToAnchorRequested;
         _viewModel.GoBackRequested += OnGoBackRequested;
         _viewModel.StyleInjectionRequested += OnStyleInjectionRequested;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+        // 应用初始主题画刷
+        ApplyThemeResources(_viewModel.UiTheme);
 
         // 确保 WebView2 环境就绪后再初始化
         WebView.CoreWebView2InitializationCompleted += OnWebViewReady;
         EnsureWebView2Environment();
+    }
+
+    /// <summary>ViewModel 属性变化时，若为 UiTheme 则同步更新画刷资源</summary>
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ReaderViewModel.UiTheme))
+        {
+            Dispatcher.Invoke(() => ApplyThemeResources(_viewModel.UiTheme));
+        }
+    }
+
+    /// <summary>
+    /// 根据界面主题配色更新 Page.Resources 中的画刷资源。
+    /// 这些画刷被各 Style.Triggers 以 DynamicResource 引用，替换后自动刷新交互态颜色。
+    /// </summary>
+    private void ApplyThemeResources(ReaderUITheme theme)
+    {
+        void SetBrush(string key, string color)
+        {
+            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+            brush.Freeze();
+            Resources[key] = brush;
+        }
+
+        SetBrush("HoverBrush", theme.HoverBackground);
+        SetBrush("PressedBrush", theme.PressedBackground);
+        SetBrush("OptionBackgroundBrush", theme.OptionBackground);
+        SetBrush("OptionHoverBrush", theme.OptionHoverBackground);
+        SetBrush("AccentBrush", theme.AccentColor);
+        SetBrush("AccentLightBrush", theme.AccentLightColor);
+        SetBrush("PrimaryTextBrush", theme.PrimaryText);
+        SetBrush("SecondaryTextBrush", theme.SecondaryText);
+        SetBrush("ScrollBarThumbBrush", theme.ScrollBarThumb);
+
+        // 进度条前景渐变（强调色 → 亮色）
+        var progressGradient = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 0)
+        };
+        progressGradient.GradientStops.Add(new GradientStop(
+            (Color)ColorConverter.ConvertFromString(theme.AccentLightColor), 0));
+        progressGradient.GradientStops.Add(new GradientStop(
+            (Color)ColorConverter.ConvertFromString(LightenColor(theme.AccentLightColor, 0.12)), 1));
+        progressGradient.Freeze();
+        Resources["ProgressBarGradient"] = progressGradient;
+
+        // 底部进度胶囊背景渐变（深→浅的面板色）
+        var capsuleGradient = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1)
+        };
+        capsuleGradient.GradientStops.Add(new GradientStop(
+            (Color)ColorConverter.ConvertFromString(DarkenColor(theme.PanelDeepBackground, 0.04)), 0));
+        capsuleGradient.GradientStops.Add(new GradientStop(
+            (Color)ColorConverter.ConvertFromString(theme.PanelDeepBackground), 1));
+        capsuleGradient.Freeze();
+        Resources["ProgressCapsuleBrush"] = capsuleGradient;
+    }
+
+    /// <summary>将十六进制颜色按比例调亮</summary>
+    private static string LightenColor(string hex, double amount)
+    {
+        var c = (Color)ColorConverter.ConvertFromString(hex);
+        return $"#{(byte)Math.Min(255, c.R + (255 - c.R) * amount):X2}{(byte)Math.Min(255, c.G + (255 - c.G) * amount):X2}{(byte)Math.Min(255, c.B + (255 - c.B) * amount):X2}";
+    }
+
+    /// <summary>将十六进制颜色按比例调暗</summary>
+    private static string DarkenColor(string hex, double amount)
+    {
+        var c = (Color)ColorConverter.ConvertFromString(hex);
+        return $"#{(byte)Math.Max(0, c.R * (1 - amount)):X2}{(byte)Math.Max(0, c.G * (1 - amount)):X2}{(byte)Math.Max(0, c.B * (1 - amount)):X2}";
     }
 
     /// <summary>
@@ -71,11 +149,8 @@ public partial class ReaderPage : System.Windows.Controls.Page
         WebView.CoreWebView2.Settings.IsScriptEnabled = true;
         WebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
 
-        // 拦截 epub.local 虚拟主机的资源请求（图片、CSS、字体等），从 EPUB ZIP 中读取返回
-        WebView.CoreWebView2.AddWebResourceRequestedFilter(
-            "https://epub.local/*",
-            Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext.All);
-        WebView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+        // 卡片化：让 WebView2 控件背景透明，圆角处显示卡片背景色（与 HTML body 同色，视觉无方角）
+        WebView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
 
         // 订阅导航开始事件（用于外部超链接拦截）
         WebView.CoreWebView2.NavigationStarting += OnNavigationStarting;
@@ -260,32 +335,6 @@ public partial class ReaderPage : System.Windows.Controls.Page
         catch
         {
         }
-    }
-
-    /// <summary>
-    /// 拦截 epub.local 虚拟主机的资源请求，从 EPUB ZIP 中读取图片/CSS/字体等资源返回给 WebView2
-    /// </summary>
-    private void OnWebResourceRequested(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebResourceRequestedEventArgs e)
-    {
-        var uri = e.Request.Uri;
-        if (!uri.StartsWith("https://epub.local/", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // 提取 URL 中虚拟主机之后的路径（已是相对 ZIP 根的路径）
-        var resourcePath = Uri.UnescapeDataString(uri["https://epub.local/".Length..]);
-        var (data, mediaType) = _viewModel.LoadResource(resourcePath);
-
-        if (data == null)
-        {
-            e.Response = WebView.CoreWebView2!.Environment.CreateWebResourceResponse(
-                null, 404, "Not Found", "");
-            return;
-        }
-
-        // MemoryStream 由 WebView2 接管，不可提前释放
-        var stream = new System.IO.MemoryStream(data);
-        e.Response = WebView.CoreWebView2!.Environment.CreateWebResourceResponse(
-            stream, 200, "OK", $"Content-Type: {mediaType}");
     }
 
     /// <summary>

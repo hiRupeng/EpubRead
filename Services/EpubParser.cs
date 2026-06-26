@@ -31,6 +31,9 @@ public class EpubParser
         // 3. 解析 OPF → 元数据、manifest、spine
         var (title, author, coverId, manifest, spine) = ParseOpf(archive, opfPath);
 
+        // 3.1 构建 spine 文件 href 列表（相对于 basePath，不含锚点）
+        var spineFiles = BuildSpineFiles(spine, manifest, basePath);
+
         // 4. 解析目录（NCX / NAV），保留层级结构
         var chapters = ParseNav(archive, basePath, manifest, spine);
 
@@ -57,6 +60,7 @@ public class EpubParser
             CoverImage = coverImage,
             Chapters = chapters,
             FlatChapters = flatChapters,
+            SpineFiles = spineFiles,
             BasePath = basePath
         };
     }
@@ -75,6 +79,46 @@ public class EpubParser
         using var stream = entry.Open();
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
+    }
+
+    /// <summary>
+    /// 加载多个 spine 文件的原始 HTML 内容（用于一个逻辑章节跨多个文件的情况）。
+    /// 返回每个文件的原始 HTML 字符串列表，调用方负责提取 body 后拼接。
+    /// </summary>
+    public List<string> LoadMultiFileRawContent(string epubFilePath, string basePath, IEnumerable<string> hrefs)
+    {
+        using var archive = ZipFile.OpenRead(epubFilePath);
+        var parts = new List<string>();
+        foreach (var href in hrefs)
+        {
+            var entry = FindEntry(archive, basePath, href);
+            if (entry == null) continue;
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            parts.Add(reader.ReadToEnd());
+        }
+        return parts;
+    }
+
+    /// <summary>
+    /// 从 OPF spine 和 manifest 构建 spine 文件 href 列表（相对于 basePath，不含锚点）。
+    /// </summary>
+    private static List<string> BuildSpineFiles(List<string> spine, Dictionary<string, string> manifest, string basePath)
+    {
+        var result = new List<string>();
+        foreach (var id in spine)
+        {
+            if (!manifest.TryGetValue(id, out var href)) continue;
+
+            // 分离锚点
+            var hashIdx = href.IndexOf('#');
+            var fileHref = hashIdx >= 0 ? href[..hashIdx] : href;
+
+            // 规范化：URL 解码、去除 ./、去除 basePath 前缀（与 ParseSrc 一致）
+            var (normalized, _) = ParseSrc(fileHref, basePath);
+            result.Add(normalized ?? fileHref);
+        }
+        return result;
     }
 
     /// <summary>

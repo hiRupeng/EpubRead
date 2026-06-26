@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Windows.Data;
-using EpubRead.Models;
 
 namespace EpubRead.Converters;
 
@@ -80,29 +79,6 @@ public class ThemeEqualsConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;
-}
-
-/// <summary>
-/// 导航模式到文本的转换器
-/// </summary>
-public class NavModeToTextConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is NavigationMode mode)
-        {
-            return mode switch
-            {
-                NavigationMode.BySection => "小节模式",
-                NavigationMode.BySpineFile => "文件模式",
-                _ => ""
-            };
-        }
-        return "";
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
 }
 
 /// <summary>

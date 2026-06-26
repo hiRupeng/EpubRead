@@ -82,7 +82,4 @@ public class ReadingSettings
 
     /// <summary>页宽</summary>
     public PageWidthOption PageWidth { get; set; } = PageWidthOption.Medium;
-
-    /// <summary>导航模式</summary>
-    public NavigationMode NavigationMode { get; set; } = Models.NavigationMode.BySection;
 }

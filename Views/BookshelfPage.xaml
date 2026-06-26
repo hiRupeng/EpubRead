@@ -3,7 +3,7 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:converters="clr-namespace:EpubRead.Converters"
       xmlns:models="clr-namespace:EpubRead.Models"
-      Background="#1E1E2E"
+      Background="#202020"
       UseLayoutRounding="True">
 
     <Page.Resources>
@@ -13,8 +13,8 @@
 
         <!-- 进度条渐变画刷 -->
         <LinearGradientBrush x:Key="ProgressGradientBrush" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="#4A90D9" Offset="0" />
-            <GradientStop Color="#6BB3F0" Offset="1" />
+            <GradientStop Color="#60CDFF" Offset="0" />
+            <GradientStop Color="#78D4FF" Offset="1" />
         </LinearGradientBrush>
 
         <!-- 封面顶部高光渐变 -->
@@ -28,13 +28,13 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
-                        <Border x:Name="ThumbBorder" Background="#4A4A5E" CornerRadius="3" Margin="1,2" />
+                        <Border x:Name="ThumbBorder" Background="#505050" CornerRadius="3" Margin="1,2" />
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ThumbBorder" Property="Background" Value="#6BB3F0" />
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#60CDFF" />
                             </Trigger>
                             <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="ThumbBorder" Property="Background" Value="#4A90D9" />
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#0078D4" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -115,14 +115,14 @@
         </Grid.RowDefinitions>
 
         <!-- 顶部导航栏 -->
-        <Border Grid.Row="0" Background="#2D2D3F" CornerRadius="0,0,16,16">
+        <Border Grid.Row="0" Background="#2C2C2C" CornerRadius="0,0,8,8">
             <Border.Effect>
                 <DropShadowEffect ShadowDepth="0" BlurRadius="12" Opacity="0.4" Color="#000000" Direction="270" />
             </Border.Effect>
             <Grid Margin="32,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="EPUB 阅读器" FontSize="20" FontWeight="SemiBold"
-                               Foreground="#E8E8EC" VerticalAlignment="Center"
+                               Foreground="#FFFFFF" VerticalAlignment="Center"
                                FontFamily="Microsoft YaHei">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -136,15 +136,15 @@
                     </TextBlock>
 
                     <!-- 搜索框 -->
-                    <Border Background="#3A3A4A" CornerRadius="10" Height="36"
+                    <Border Background="#3D3D3D" CornerRadius="10" Height="36"
                             VerticalAlignment="Center" Width="240" Margin="24,0,0,0">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Style.Triggers>
                                     <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                        <Setter Property="BorderBrush" Value="#4A90D9" />
+                                        <Setter Property="BorderBrush" Value="#60CDFF" />
                                         <Setter Property="BorderThickness" Value="1.5" />
-                                        <Setter Property="Background" Value="#33334A" />
+                                        <Setter Property="Background" Value="#383838" />
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
@@ -156,11 +156,11 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     Background="Transparent" Foreground="#E8E8EC"
+                                     Background="Transparent" Foreground="#FFFFFF"
                                      BorderThickness="0" VerticalAlignment="Center"
                                      FontSize="13" FontFamily="Microsoft YaHei"
-                                     CaretBrush="#4A90D9" />
-                            <TextBlock Grid.Column="1" Text="🔍" Foreground="#6B6B80"
+                                     CaretBrush="#60CDFF" />
+                            <TextBlock Grid.Column="1" Text="🔍" Foreground="#666666"
                                        VerticalAlignment="Center" FontSize="13" />
                         </Grid>
                     </Border>
@@ -189,10 +189,10 @@
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                             Visibility="{Binding Books.Count, Converter={StaticResource NullToVisibility}, ConverterParameter=invert}">
                     <TextBlock Text="📚" FontSize="56" HorizontalAlignment="Center" Opacity="0.4" />
-                    <TextBlock Text="书架空空如也" Foreground="#8B8BA0" FontSize="20" FontWeight="SemiBold"
+                    <TextBlock Text="书架空空如也" Foreground="#7A7A7A" FontSize="20" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,16,0,8" />
                     <TextBlock Text="点击「导入书籍」按钮或拖入 EPUB 文件开始阅读"
-                               Foreground="#6B6B80" FontSize="13"
+                               Foreground="#666666" FontSize="13"
                                HorizontalAlignment="Center" />
                 </StackPanel>
 
@@ -246,7 +246,7 @@
                                 <Border Margin="0,4,0,0" Background="#40000000"
                                         CornerRadius="12" />
                                 <!-- 卡片主体层（带圆角裁剪，确保四角子内容不溢出） -->
-                                <Border Background="#252535" CornerRadius="12">
+                                <Border Background="#2C2C2C" CornerRadius="12">
                                     <Border.Clip>
                                         <RectangleGeometry RadiusX="12" RadiusY="12"
                                                            Rect="0,0,170,265" />
@@ -295,14 +295,14 @@
                                         <!-- 书名和作者（带底部圆角裁剪） -->
                                         <Border Grid.Row="1" CornerRadius="0,0,12,12"
                                                 ClipToBounds="True"
-                                                Background="#252535"
-                                                BorderBrush="#333A4A" BorderThickness="0,1,0,0">
+                                                Background="#2C2C2C"
+                                                BorderBrush="#3D3D3D" BorderThickness="0,1,0,0">
                                             <StackPanel VerticalAlignment="Center" Margin="12,8,12,10">
                                                 <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
-                                                           Foreground="#E8E8EC" TextTrimming="CharacterEllipsis"
+                                                           Foreground="#FFFFFF" TextTrimming="CharacterEllipsis"
                                                            MaxWidth="146" HorizontalAlignment="Center" />
                                                 <TextBlock Text="{Binding Author}" FontSize="11"
-                                                           Foreground="#8888A0" TextTrimming="CharacterEllipsis"
+                                                           Foreground="#888888" TextTrimming="CharacterEllipsis"
                                                            MaxWidth="146" HorizontalAlignment="Center"
                                                            Margin="0,4,0,0" />
                                             </StackPanel>
@@ -354,10 +354,10 @@
 
         <!-- 拖拽导入覆盖层 -->
         <Border x:Name="DragOverlay" Grid.RowSpan="2"
-                Background="#664A90D9" Visibility="Collapsed"
+                Background="#660078D4" Visibility="Collapsed"
                 IsHitTestVisible="False">
             <Border CornerRadius="20" BorderBrush="#FFFFFF" BorderThickness="2"
-                    Background="#334A90D9" Width="440" Height="220"
+                    Background="#330078D4" Width="440" Height="220"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
@@ -384,7 +384,7 @@
                     <TextBlock Text="释放鼠标导入 EPUB 文件" FontSize="18"
                                Foreground="#FFFFFF" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,16,0,0" />
-                    <TextBlock Text="支持批量导入" FontSize="12" Foreground="#B0D0F0"
+                    <TextBlock Text="支持批量导入" FontSize="12" Foreground="#9DCCE8"
                                HorizontalAlignment="Center" Margin="0,6,0,0" Opacity="0.8" />
                 </StackPanel>
             </Border>

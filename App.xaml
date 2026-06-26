@@ -1,4 +1,4 @@
-﻿<Application x:Class="EpubRead.App"
+<Application x:Class="EpubRead.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:EpubRead"
@@ -12,13 +12,12 @@
         <converters:LevelToIconConverter x:Key="LevelToIconConverter" />
         <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
         <converters:ThemeEqualsConverter x:Key="ThemeEqualsConverter" />
-        <converters:NavModeToTextConverter x:Key="NavModeToTextConverter" />
         <converters:PercentToWidthConverter x:Key="PercentToWidth" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
 
-        <!-- 导入按钮样式 -->
+        <!-- 导入按钮样式（Fluent Design 强调色按钮） -->
         <Style x:Key="ImportButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#4A90D9" />
+            <Setter Property="Background" Value="#0078D4" />
             <Setter Property="Foreground" Value="#FFFFFF" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -35,10 +34,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#357ABD" />
+                                <Setter Property="Background" Value="#106EBE" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#2C6AA0" />
+                                <Setter Property="Background" Value="#005A9E" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

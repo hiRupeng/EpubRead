@@ -4,31 +4,35 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
       xmlns:models="clr-namespace:EpubRead.Models"
-      Background="#1E1E2E"
+      Background="{Binding UiTheme.PageBackground}"
       KeyDown="OnPageKeyDown">
 
     <Page.Resources>
-        <!-- ═══ 渐变画刷资源 ═══ -->
-        <LinearGradientBrush x:Key="ProgressBarGradient" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="#4A90D9" Offset="0" />
-            <GradientStop Color="#6BB3F0" Offset="1" />
-        </LinearGradientBrush>
+        <!-- ═══ 主题画刷资源（由 code-behind 按当前主题更新） ═══ -->
+        <SolidColorBrush x:Key="HoverBrush" Color="#383838" />
+        <SolidColorBrush x:Key="PressedBrush" Color="#404040" />
+        <SolidColorBrush x:Key="OptionBackgroundBrush" Color="#3D3D3D" />
+        <SolidColorBrush x:Key="OptionHoverBrush" Color="#505050" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />
+        <SolidColorBrush x:Key="AccentLightBrush" Color="#60CDFF" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#CCCCCC" />
+        <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#505050" />
 
-        <LinearGradientBrush x:Key="DividerGradientBrush" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="#003A3A4A" Offset="0" />
-            <GradientStop Color="#3A3A4A" Offset="0.5" />
-            <GradientStop Color="#003A3A4A" Offset="1" />
+        <LinearGradientBrush x:Key="ProgressBarGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#60CDFF" Offset="0" />
+            <GradientStop Color="#78D4FF" Offset="1" />
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="ProgressCapsuleBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#32324A" Offset="0" />
-            <GradientStop Color="#28283C" Offset="1" />
+            <GradientStop Color="#383838" Offset="0" />
+            <GradientStop Color="#2C2C2C" Offset="1" />
         </LinearGradientBrush>
 
         <!-- 目录项按钮样式 -->
         <Style x:Key="TocItemStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#C0C0D0" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Padding" Value="16,9" />
@@ -41,7 +45,7 @@
                         <Grid>
                             <!-- 左侧竖条指示器（悬浮显示） -->
                             <Border x:Name="LeftIndicator" Width="3" CornerRadius="1.5"
-                                    Background="#6BB3F0" HorizontalAlignment="Left"
+                                    Background="{DynamicResource AccentLightBrush}" HorizontalAlignment="Left"
                                     Margin="0,4,0,4" Opacity="0" />
                             <Border Background="{TemplateBinding Background}"
                                     CornerRadius="6"
@@ -53,11 +57,11 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#32324A" />
+                                <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
                                 <Setter TargetName="LeftIndicator" Property="Opacity" Value="1" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#3A3A52" />
+                                <Setter Property="Background" Value="{DynamicResource PressedBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -65,10 +69,49 @@
             </Setter>
         </Style>
 
+        <!-- 递归目录节点模板（利用 WPF 隐式数据模板自动递归，支持任意层级子节点） -->
+        <DataTemplate DataType="{x:Type models:Chapter}">
+            <StackPanel>
+                <Button Style="{StaticResource TocItemStyle}"
+                        Command="{Binding DataContext.NavigateToChapterCommand,
+                            Source={x:Reference ReaderPageRoot}}"
+                        CommandParameter="{Binding}"
+                        ToolTip="{Binding Title}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Level, Converter={StaticResource LevelToIconConverter}}"
+                                   FontSize="12" Margin="0,0,6,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Title}" FontSize="13"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Level}" Value="0">
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Button>
+                <!-- 嵌套 ItemsControl 不指定 ItemTemplate，WPF 会按 DataType 隐式递归应用本模板 -->
+                <ItemsControl ItemsSource="{Binding Children}" Margin="20,0,0,0" />
+            </StackPanel>
+        </DataTemplate>
+
         <!-- 设置面板选项按钮 -->
         <Style x:Key="OptionButtonStyle" TargetType="RadioButton">
-            <Setter Property="Background" Value="#3A3A4A" />
-            <Setter Property="Foreground" Value="#A0A0B0" />
+            <Setter Property="Background" Value="{DynamicResource OptionBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Cursor" Value="Hand" />
@@ -87,12 +130,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#357ABD" />
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#6BB3F0" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentLightBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#4A4A5E" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource OptionHoverBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -103,7 +146,7 @@
         <!-- 通用阅读器按钮 -->
         <Style x:Key="ReaderButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#A0A0B0" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="Cursor" Value="Hand" />
@@ -118,8 +161,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#3A3A4A" />
-                                <Setter Property="Foreground" Value="#E8E8EC" />
+                                <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.35" />
@@ -142,25 +185,25 @@
                         <Grid>
                             <!-- 外圈光晕（选中时显示） -->
                             <Border Width="44" Height="44" CornerRadius="22"
-                                    Background="#336BB3F0" Opacity="0" x:Name="GlowRing"
+                                    Background="{DynamicResource AccentLightBrush}" Opacity="0" x:Name="GlowRing"
                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <Border Width="36" Height="36" CornerRadius="18"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}" />
                             <Border Width="10" Height="10" CornerRadius="5"
-                                    Background="White" HorizontalAlignment="Center"
+                                    Background="{DynamicResource AccentLightBrush}" HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Opacity="0" x:Name="CheckMark" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="CheckMark" Property="Opacity" Value="1" />
-                                <Setter TargetName="GlowRing" Property="Opacity" Value="1" />
-                                <Setter Property="BorderBrush" Value="White" />
+                                <Setter TargetName="GlowRing" Property="Opacity" Value="0.2" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource AccentLightBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="BorderBrush" Value="White" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource AccentLightBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -174,14 +217,14 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
                         <Border x:Name="ThumbBorder"
-                                Background="#4A4A5E" CornerRadius="3"
+                                Background="{DynamicResource ScrollBarThumbBrush}" CornerRadius="3"
                                 Margin="1,2" />
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ThumbBorder" Property="Background" Value="#6BB3F0" />
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="{DynamicResource AccentLightBrush}" />
                             </Trigger>
                             <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="ThumbBorder" Property="Background" Value="#4A90D9" />
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -232,7 +275,7 @@
             </Grid.RowDefinitions>
 
             <!-- 顶部工具栏 -->
-            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#2D2D3F" Panel.ZIndex="10">
+            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{Binding UiTheme.ToolbarBackground}" Panel.ZIndex="10">
                 <Border.Effect>
                     <DropShadowEffect ShadowDepth="0" BlurRadius="10" Opacity="0.35" Color="#000000" Direction="270" />
                 </Border.Effect>
@@ -243,7 +286,7 @@
                     </StackPanel>
 
                     <TextBlock Text="{Binding BookTitle}" FontSize="16" FontWeight="Medium"
-                               Foreground="#E8E8EC" HorizontalAlignment="Center"
+                               Foreground="{Binding UiTheme.PrimaryText}" HorizontalAlignment="Center"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                MaxWidth="400">
                         <TextBlock.Style>
@@ -264,7 +307,7 @@
                         <Button Content="A+" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding IncreaseFontSizeCommand}"
                                 FontWeight="Bold" FontSize="17" ToolTip="放大字体" />
-                        <Border Width="1" Height="20" Background="#3A3A4A" Margin="4,0" />
+                        <Border Width="1" Height="20" Background="{Binding UiTheme.DividerColor}" Margin="4,0" />
                         <Button Content="⚙" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding ToggleSettingsCommand}"
                                 FontSize="18" ToolTip="阅读设置" />
@@ -275,9 +318,9 @@
             </Border>
 
             <!-- 顶部进度条 -->
-            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#262636" Height="2">
+            <Border Grid.Row="1" Grid.ColumnSpan="2" Background="{Binding UiTheme.PanelDeepBackground}" Height="2">
                 <ProgressBar Value="{Binding TopProgress}" Maximum="1" Minimum="0"
-                             Foreground="{StaticResource ProgressBarGradient}" Background="Transparent"
+                             Foreground="{DynamicResource ProgressBarGradient}" Background="Transparent"
                              BorderThickness="0" Height="2" />
             </Border>
 
@@ -285,120 +328,47 @@
             <Border Grid.Row="2" Grid.Column="1"
                     Width="280"
                     Visibility="{Binding IsTocOpen, Converter={StaticResource BoolToVisibility}}"
-                    Background="#262636" BorderBrush="#3A3A4A" BorderThickness="1,0,0,0">
+                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="40" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" BorderBrush="#3A3A4A" BorderThickness="0,0,0,1"
+                    <Border Grid.Row="0" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="0,0,0,1"
                             Padding="16,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="📖" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBlock Text="章节目录" Foreground="#C0C0D0" FontSize="13"
+                            <TextBlock Text="章节目录" Foreground="{Binding UiTheme.SecondaryText}" FontSize="13"
                                        FontWeight="SemiBold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding TocChapters}" Margin="4,8">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type models:Chapter}">
-                                    <StackPanel>
-                                        <Button Style="{StaticResource TocItemStyle}"
-                                                Command="{Binding DataContext.NavigateToChapterCommand,
-                                                    Source={x:Reference ReaderPageRoot}}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip="{Binding Title}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding Level, Converter={StaticResource LevelToIconConverter}}"
-                                                           FontSize="12" Margin="0,0,6,0"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding Title}" FontSize="13"
-                                                           Foreground="#C0C0D0"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}" />
-                                            </Grid>
-                                        </Button>
-                                        <ItemsControl ItemsSource="{Binding Children}"
-                                                      Margin="20,0,0,0">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type models:Chapter}">
-                                                    <StackPanel>
-                                                        <Button Style="{StaticResource TocItemStyle}"
-                                                                Command="{Binding DataContext.NavigateToChapterCommand,
-                                                                    Source={x:Reference ReaderPageRoot}}"
-                                                                CommandParameter="{Binding}"
-                                                                ToolTip="{Binding Title}">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                    <ColumnDefinition Width="*" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Grid.Column="0" Text="📄"
-                                                                           FontSize="12" Margin="0,0,6,0"
-                                                                           VerticalAlignment="Center" />
-                                                                <TextBlock Grid.Column="1"
-                                                                           Text="{Binding Title}" FontSize="13"
-                                                                           Foreground="#C0C0D0"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                            </Grid>
-                                                        </Button>
-                                                        <ItemsControl ItemsSource="{Binding Children}"
-                                                                      Margin="20,0,0,0">
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate DataType="{x:Type models:Chapter}">
-                                                                    <Button Style="{StaticResource TocItemStyle}"
-                                                                            Command="{Binding DataContext.NavigateToChapterCommand,
-                                                                                Source={x:Reference ReaderPageRoot}}"
-                                                                            CommandParameter="{Binding}"
-                                                                            ToolTip="{Binding Title}">
-                                                                        <Grid>
-                                                                            <Grid.ColumnDefinitions>
-                                                                                <ColumnDefinition Width="Auto" />
-                                                                                <ColumnDefinition Width="*" />
-                                                                            </Grid.ColumnDefinitions>
-                                                                            <TextBlock Grid.Column="0" Text="·"
-                                                                                       FontSize="12" Margin="0,0,6,0"
-                                                                                       Foreground="#6BB3F0"
-                                                                                       VerticalAlignment="Center" />
-                                                                            <TextBlock Grid.Column="1"
-                                                                                       Text="{Binding Title}" FontSize="12"
-                                                                                       Foreground="#A0A0B0"
-                                                                                       TextTrimming="CharacterEllipsis" />
-                                                                        </Grid>
-                                                                    </Button>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding TocChapters}" Margin="4,8" />
                     </ScrollViewer>
                 </Grid>
             </Border>
 
-            <!-- WebView2 阅读区域 -->
-            <wv2:WebView2 x:Name="WebView" Grid.Row="2" Grid.Column="0" />
+            <!-- WebView2 阅读区域（卡片化：浮起的纸） -->
+            <Border Grid.Row="2" Grid.Column="0"
+                    Margin="14,10,14,10"
+                    Background="{Binding UiTheme.ReadingBackground}"
+                    BorderBrush="{Binding UiTheme.DividerColor}"
+                    BorderThickness="1"
+                    CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="0" BlurRadius="22" Opacity="0.18" Color="#000000" />
+                </Border.Effect>
+                <wv2:WebView2 x:Name="WebView" />
+            </Border>
 
             <!-- 底部导航栏 -->
             <Border Grid.Row="3" Grid.ColumnSpan="2"
-                    Background="#2D2D3F" BorderBrush="#3A3A4A" BorderThickness="0,1,0,0">
+                    Background="{Binding UiTheme.ToolbarBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="0,1,0,0">
                 <Grid Margin="16,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ProgressText}" Foreground="#A0A0B0"
+                        <TextBlock Text="{Binding ProgressText}" Foreground="{Binding UiTheme.TertiaryText}"
                                    FontSize="12" VerticalAlignment="Center" />
                     </StackPanel>
 
@@ -407,25 +377,14 @@
                         <Button Content="◀ 上一章" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding NavigatePrevCommand}"
                                 IsEnabled="{Binding HasPrev}" />
-                        <Border Background="{StaticResource ProgressCapsuleBrush}" CornerRadius="14"
+                        <Border Background="{DynamicResource ProgressCapsuleBrush}" CornerRadius="14"
                                 Padding="22,7" Margin="16,0">
-                            <TextBlock Text="{Binding ProgressText}" Foreground="#B0B0C8"
+                            <TextBlock Text="{Binding ProgressText}" Foreground="{Binding UiTheme.SecondaryText}"
                                        FontSize="13" FontWeight="Medium" />
                         </Border>
                         <Button Content="下一章 ▶" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding NavigateNextCommand}"
                                 IsEnabled="{Binding HasNext}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                VerticalAlignment="Center">
-                        <TextBlock Foreground="#6BB3F0" FontSize="11" Opacity="0.75"
-                                   VerticalAlignment="Center">
-                            <Run Text="🔤 " />
-                            <Run Text="{Binding FontSize, StringFormat={}{0}px}" />
-                            <Run Text=" · " />
-                            <Run Text="{Binding NavigationMode, Converter={StaticResource NavModeToTextConverter}}" />
-                        </TextBlock>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -433,16 +392,16 @@
             <Border Grid.Row="2" Grid.Column="1"
                     Width="300"
                     Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVisibility}}"
-                    Background="#2D2D3F" BorderBrush="#3A3A4A" BorderThickness="1,0,0,0">
+                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,16,16,24">
 
                             <!-- 面板标题 -->
                             <Grid Margin="0,0,0,16">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="⚙" FontSize="16" Foreground="#6BB3F0"
+                                    <TextBlock Text="⚙" FontSize="16" Foreground="{Binding UiTheme.AccentLightColor}"
                                                VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <TextBlock Text="阅读设置" Foreground="#E8E8EC" FontSize="16"
+                                    <TextBlock Text="阅读设置" Foreground="{Binding UiTheme.PrimaryText}" FontSize="16"
                                                FontWeight="SemiBold" VerticalAlignment="Center" />
                                 </StackPanel>
                                 <Button Content="✕" Style="{StaticResource ReaderButtonStyle}"
@@ -451,24 +410,24 @@
                             </Grid>
 
                             <!-- 主题选择 -->
-                            <TextBlock Text="主题" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="主题" Foreground="{Binding UiTheme.TertiaryText}" FontSize="12" Margin="0,0,0,8" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
-                                             Background="#F5F0E8" BorderBrush="#888"
+                                             Background="#FAFAFA" BorderBrush="#888"
                                              GroupName="Theme"
                                              IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=Day}"
                                              Command="{Binding SetThemeCommand}"
                                              CommandParameter="{x:Static models:ThemeType.Day}"
                                              ToolTip="白天模式" Margin="0,0,12,0" />
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
-                                             Background="#1A1A2E" BorderBrush="#555"
+                                             Background="#202020" BorderBrush="#555"
                                              GroupName="Theme"
                                              IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=Night}"
                                              Command="{Binding SetThemeCommand}"
                                              CommandParameter="{x:Static models:ThemeType.Night}"
                                              ToolTip="夜晚模式" Margin="0,0,12,0" />
                                 <RadioButton Style="{StaticResource ThemeCircleStyle}"
-                                             Background="#C7EDCC" BorderBrush="#888"
+                                             Background="#F5E6C8" BorderBrush="#888"
                                              GroupName="Theme"
                                              IsChecked="{Binding SelectedTheme, Converter={StaticResource ThemeEqualsConverter}, ConverterParameter=EyeCare}"
                                              Command="{Binding SetThemeCommand}"
@@ -476,10 +435,10 @@
                                              ToolTip="护眼模式" />
                             </StackPanel>
 
-                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+                            <Border Height="1" Background="{Binding UiTheme.DividerColor}" Margin="0,0,0,12" />
 
                             <!-- 字体大小 -->
-                            <TextBlock Text="字体大小" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="字体大小" Foreground="{Binding UiTheme.TertiaryText}" FontSize="12" Margin="0,0,0,8" />
                             <Grid Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -490,17 +449,17 @@
                                         FontWeight="Bold" Padding="10,4"
                                         Command="{Binding DecreaseFontSizeCommand}" />
                                 <TextBlock Grid.Column="1" Text="{Binding FontSize, StringFormat={}{0}px}"
-                                           Foreground="#E8E8EC" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{Binding UiTheme.PrimaryText}" FontSize="16" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <Button Grid.Column="2" Content="A+" Style="{StaticResource ReaderButtonStyle}"
                                         FontWeight="Bold" Padding="10,4"
                                         Command="{Binding IncreaseFontSizeCommand}" />
                             </Grid>
 
-                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+                            <Border Height="1" Background="{Binding UiTheme.DividerColor}" Margin="0,0,0,12" />
 
                             <!-- 字体选择 -->
-                            <TextBlock Text="字体" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="字体" Foreground="{Binding UiTheme.TertiaryText}" FontSize="12" Margin="0,0,0,8" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="衬线"
                                              GroupName="Font"
@@ -519,10 +478,10 @@
                                              CommandParameter="{x:Static models:FontFamilyOption.Monospace}" />
                             </StackPanel>
 
-                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+                            <Border Height="1" Background="{Binding UiTheme.DividerColor}" Margin="0,0,0,12" />
 
                             <!-- 行间距 -->
-                            <TextBlock Text="行间距" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="行间距" Foreground="{Binding UiTheme.TertiaryText}" FontSize="12" Margin="0,0,0,8" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="紧凑"
                                              GroupName="LineHeight"
@@ -541,10 +500,10 @@
                                              CommandParameter="{x:Static models:LineHeightOption.Loose}" />
                             </StackPanel>
 
-                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
+                            <Border Height="1" Background="{Binding UiTheme.DividerColor}" Margin="0,0,0,12" />
 
                             <!-- 页宽 -->
-                            <TextBlock Text="页宽" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="页宽" Foreground="{Binding UiTheme.TertiaryText}" FontSize="12" Margin="0,0,0,8" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <RadioButton Style="{StaticResource OptionButtonStyle}" Content="窄"
                                              GroupName="PageWidth"
@@ -563,29 +522,14 @@
                                              CommandParameter="{x:Static models:PageWidthOption.Wide}" />
                             </StackPanel>
 
-                            <Border Height="1" Background="#3A3A4A" Margin="0,0,0,12" />
-
-                            <!-- 导航模式 -->
-                            <TextBlock Text="导航模式" Foreground="#A0A0B0" FontSize="12" Margin="0,0,0,8" />
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
-                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="🔖 小节"
-                                             GroupName="NavMode"
-                                             IsChecked="{Binding NavigationMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=BySection}"
-                                             Command="{Binding SwitchNavigationModeCommand}"
-                                             CommandParameter="{x:Static models:NavigationMode.BySection}" Margin="0,0,8,0" />
-                                <RadioButton Style="{StaticResource OptionButtonStyle}" Content="📄 文件"
-                                             GroupName="NavMode"
-                                             IsChecked="{Binding NavigationMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=BySpineFile}"
-                                             Command="{Binding SwitchNavigationModeCommand}"
-                                             CommandParameter="{x:Static models:NavigationMode.BySpineFile}" />
-                            </StackPanel>
+                            <Border Height="1" Background="{Binding UiTheme.DividerColor}" Margin="0,0,0,12" />
 
                             <!-- 快捷键提示 -->
-                            <Border Background="#262636" CornerRadius="8" Padding="12,10" Margin="0,20,0,0">
+                            <Border Background="{Binding UiTheme.PanelDeepBackground}" CornerRadius="8" Padding="12,10" Margin="0,20,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="快捷键" Foreground="#6BB3F0" FontSize="11"
+                                    <TextBlock Text="快捷键" Foreground="{Binding UiTheme.AccentLightColor}" FontSize="11"
                                                FontWeight="SemiBold" Margin="0,0,0,6" />
-                                    <TextBlock Foreground="#888" FontSize="11" LineHeight="18"
+                                    <TextBlock Foreground="{Binding UiTheme.TertiaryText}" FontSize="11" LineHeight="18"
                                                TextWrapping="Wrap">
                                         ← → 上下章节 · T 目录 · S 设置 · ESC 关闭
                                     </TextBlock>

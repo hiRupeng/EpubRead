@@ -1,5 +1,5 @@
+using System.IO;
 using System.Windows;
-using System.Windows.Input;
 using EpubRead.Models;
 using EpubRead.Services;
 using EpubRead.ViewModels;
@@ -23,45 +23,8 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
         _appDataDir = appDataDir;
 
-        // 自定义标题栏拖拽
-        MouseDown += OnTitleBarMouseDown;
-
         // 加载书架页面
         Loaded += OnLoaded;
-    }
-
-    private void OnTitleBarMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-
-        if (e.ClickCount >= 2)
-        {
-            // 双击标题栏：最大化 / 还原
-            WindowState = WindowState == WindowState.Maximized
-                ? WindowState.Normal
-                : WindowState.Maximized;
-        }
-        else
-        {
-            DragMove();
-        }
-    }
-
-    private void OnMinimizeClick(object sender, RoutedEventArgs e)
-    {
-        WindowState = WindowState.Minimized;
-    }
-
-    private void OnMaximizeClick(object sender, RoutedEventArgs e)
-    {
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
-    }
-
-    private void OnCloseClick(object sender, RoutedEventArgs e)
-    {
-        Close();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -80,6 +43,17 @@ public partial class MainWindow : Window
 
     private void OnOpenBookRequested(object? sender, Book book)
     {
+        // 检查文件是否存在，避免崩溃
+        if (!File.Exists(book.FilePath))
+        {
+            MessageBox.Show(
+                $"书籍文件不存在：\n\n{book.FilePath}\n\n文件可能已被移动、重命名或删除。\n\n您可以从书架中移除该书籍。",
+                "无法打开书籍",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         var readerViewModel = new ReaderViewModel(_epubParser, _settingsService);
         var readerPage = new ReaderPage(readerViewModel);
 
