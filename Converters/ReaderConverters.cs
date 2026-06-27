@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Windows.Data;
-using EpubRead.Models;
 
 namespace EpubRead.Converters;
 
@@ -92,31 +91,6 @@ public class PercentToWidthConverter : IValueConverter
         if (value is double percent && percent > 0)
             return new System.Windows.GridLength(percent, System.Windows.GridUnitType.Star);
         return new System.Windows.GridLength(0);
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
-/// <summary>
-/// 页宽选项转换为阅读卡片最大宽度（px），使 WebView2 卡片如 A4 纸般收窄居中悬浮。
-/// 与 HTML body 的 max-width 保持一致，卡片宽度即内容宽度。
-/// </summary>
-public class PageWidthToMaxWidthConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is PageWidthOption option)
-        {
-            return option switch
-            {
-                PageWidthOption.Narrow => 680.0,
-                PageWidthOption.Medium => 820.0,
-                PageWidthOption.Wide => 960.0,
-                _ => 820.0
-            };
-        }
-        return 820.0;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

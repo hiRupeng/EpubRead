@@ -14,7 +14,6 @@
         <converters:ThemeEqualsConverter x:Key="ThemeEqualsConverter" />
         <converters:PercentToWidthConverter x:Key="PercentToWidth" />
         <converters:NullToVisibilityConverter x:Key="NullToVisibility" />
-        <converters:PageWidthToMaxWidthConverter x:Key="PageWidthToMaxWidth" />
 
         <!-- 导入按钮样式（Fluent Design 强调色按钮） -->
         <Style x:Key="ImportButtonStyle" TargetType="Button">

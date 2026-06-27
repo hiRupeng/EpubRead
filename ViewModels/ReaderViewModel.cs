@@ -165,12 +165,12 @@ public partial class ReaderViewModel : ObservableObject
     /// </summary>
     private string GenerateErrorHtml(string message)
     {
-        var (bg, color, _, _) = GetThemeColors();
+        var (desk, _, color, _, _) = GetThemeColors();
         return $$"""
             <!DOCTYPE html>
             <html>
             <head><meta charset="utf-8"></head>
-            <body style="background:{{bg}};display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+            <body style="background:{{desk}};display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
             <div style="text-align:center;color:{{color}};font-family:'Microsoft YaHei',sans-serif;
                         padding:40px;max-width:600px;line-height:1.8;">
                 <div style="font-size:48px;margin-bottom:16px;opacity:0.5;">⚠️</div>
@@ -613,7 +613,7 @@ public partial class ReaderViewModel : ObservableObject
     /// </summary>
     private string GenerateReadingStyleFromBody(string bodyContent, string? fileHref = null)
     {
-        var (bg, color, hColor, blockquoteColor) = GetThemeColors();
+        var (desk, bg, color, hColor, blockquoteColor) = GetThemeColors();
         var fontFamily = GetFontFamilyCss();
         var lineHeight = GetLineHeightCss();
         var pageWidth = GetPageWidthCss();
@@ -627,15 +627,24 @@ public partial class ReaderViewModel : ObservableObject
             {{baseTag}}
             <style id="epub-reader-style">
               * { margin: 0; padding: 0; box-sizing: border-box; }
+              html { background: {{desk}}; }
               body {
+                background: {{desk}};
+                margin: 0;
+                min-height: 100vh;
+              }
+              .reading-card {
                 font-family: {{fontFamily}};
                 font-size: {{FontSize}}px;
                 line-height: {{lineHeight}};
                 color: {{color}};
                 background: {{bg}};
-                padding: 48px 32px;
                 max-width: {{pageWidth}};
                 margin: 0 auto;
+                padding: 48px 32px;
+                min-height: 100vh;
+                border-radius: 10px;
+                box-shadow: 0 8px 28px rgba(0,0,0,0.22);
                 transition: background 0.3s ease, color 0.3s ease;
               }
               h1, h2, h3 { color: {{hColor}}; margin: 1.2em 0 0.6em; }
@@ -651,7 +660,9 @@ public partial class ReaderViewModel : ObservableObject
             </style>
             </head>
             <body>
+            <div class="reading-card">
             {{bodyContent}}
+            </div>
             </body>
             </html>
             """;
@@ -662,12 +673,13 @@ public partial class ReaderViewModel : ObservableObject
     /// </summary>
     private string GenerateStyleScript()
     {
-        var (bg, color, hColor, blockquoteColor) = GetThemeColors();
+        var (desk, bg, color, hColor, blockquoteColor) = GetThemeColors();
         var fontFamily = GetFontFamilyCss();
         var lineHeight = GetLineHeightCss();
         var pageWidth = GetPageWidthCss();
 
         // 转义引号，防止 JavaScript 字符串问题
+        var safeDesk = EscapeJsString(desk);
         var safeBg = EscapeJsString(bg);
         var safeColor = EscapeJsString(color);
         var safeHColor = EscapeJsString(hColor);
@@ -681,15 +693,24 @@ public partial class ReaderViewModel : ObservableObject
     if (!s) {{ s = document.createElement('style'); s.id = 'epub-reader-style'; document.head.appendChild(s); }}
     s.textContent = `
       * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+      html {{ background: {safeDesk}; }}
       body {{
+        background: {safeDesk};
+        margin: 0;
+        min-height: 100vh;
+      }}
+      .reading-card {{
         font-family: {safeFont};
         font-size: {FontSize}px;
         line-height: {lineHeight};
         color: {safeColor};
         background: {safeBg};
-        padding: 48px 32px;
         max-width: {safeWidth};
         margin: 0 auto;
+        padding: 48px 32px;
+        min-height: 100vh;
+        border-radius: 10px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.22);
       }}
       h1, h2, h3 {{ color: {safeHColor}; margin: 1.2em 0 0.6em; }}
       h1 {{ font-size: 1.6em; }}
@@ -709,14 +730,14 @@ public partial class ReaderViewModel : ObservableObject
     private static string EscapeJsString(string s)
         => s.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
 
-    private (string bg, string color, string headingColor, string accent) GetThemeColors()
+    private (string desk, string bg, string color, string headingColor, string accent) GetThemeColors()
     {
         return SelectedTheme switch
         {
-            ThemeType.Day => ("#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4"),
-            ThemeType.Night => ("#202020", "#D4D4D4", "#FFFFFF", "#60CDFF"),
-            ThemeType.EyeCare => ("#F5E6C8", "#3D3522", "#2D2519", "#8B6914"),
-            _ => ("#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4")
+            ThemeType.Day => ("#E0E0E0", "#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4"),
+            ThemeType.Night => ("#161616", "#202020", "#D4D4D4", "#FFFFFF", "#60CDFF"),
+            ThemeType.EyeCare => ("#C9BB8E", "#F5E6C8", "#3D3522", "#2D2519", "#8B6914"),
+            _ => ("#E0E0E0", "#FAFAFA", "#1F1F1F", "#1F1F1F", "#0078D4")
         };
     }
 
