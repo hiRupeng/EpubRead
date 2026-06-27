@@ -350,27 +350,8 @@
                 </Grid>
             </Border>
 
-            <!-- WebView2 阅读区域（卡片化：浮起的纸） -->
-            <!-- 三列 Grid 实现居中：左右 * 列平分剩余空间，中间 Auto 列承载固定宽度的卡片 -->
-            <Grid Grid.Row="2" Grid.Column="0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="1"
-                        Margin="14,10"
-                        Width="{Binding SelectedPageWidth, Converter={StaticResource PageWidthToMaxWidth}}"
-                        Background="{Binding UiTheme.ReadingBackground}"
-                        BorderBrush="{Binding UiTheme.DividerColor}"
-                        BorderThickness="1"
-                        CornerRadius="10">
-                    <Border.Effect>
-                        <DropShadowEffect ShadowDepth="0" BlurRadius="22" Opacity="0.18" Color="#000000" />
-                    </Border.Effect>
-                    <wv2:WebView2 x:Name="WebView" />
-                </Border>
-            </Grid>
+            <!-- WebView2 阅读区域（卡片样式由 HTML 内部 .reading-card 实现，控件填满整个区域） -->
+            <wv2:WebView2 Grid.Row="2" Grid.Column="0" x:Name="WebView" />
 
             <!-- 底部导航栏 -->
             <Border Grid.Row="3" Grid.ColumnSpan="2"
