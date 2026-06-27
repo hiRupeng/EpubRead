@@ -445,13 +445,21 @@ public partial class ReaderPage : System.Windows.Controls.Page
     var HIGHLIGHT_COLORS = ['#FFE082','#A5D6A7','#90CAF9','#F48FB1','#CE93D8'];
     var UNDERLINE_COLOR  = '#FF7043';
 
-    // ── 构建浮动工具栏 ──
+    // ── 构建浮动工具栏（两行布局：第一行操作按钮，第二行颜色与下划线） ──
     var bar = document.createElement('div');
     bar.id = 'hl-toolbar';
-    bar.style.cssText = 'position:fixed;z-index:99999;display:none;flex-direction:row;align-items:center;' +
-        'gap:2px;background:#2B2B2B;border-radius:10px;padding:6px;' +
+    bar.style.cssText = 'position:fixed;z-index:99999;display:none;flex-direction:column;gap:4px;' +
+        'background:#2B2B2B;border-radius:10px;padding:6px;' +
         'box-shadow:0 6px 20px rgba(0,0,0,0.45);user-select:none;' +
         'font:12px/1 ""Microsoft YaHei"",sans-serif;';
+
+    // 第一行容器：笔记、复制等操作
+    var row1 = document.createElement('div');
+    row1.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:2px;';
+
+    // 第二行容器：高亮色、下划线
+    var row2 = document.createElement('div');
+    row2.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:2px;';
 
     function makeDot(color) {
         var d = document.createElement('span');
@@ -492,22 +500,68 @@ public partial class ReaderPage : System.Windows.Controls.Page
         return b;
     }
 
-    // 颜色组
-    HIGHLIGHT_COLORS.forEach(function(c){ bar.appendChild(makeDot(c)); });
-    bar.appendChild(makeSep());
-    // 下划线
+    // ── 第一行：笔记、复制 ──
+    var noteBtn = makeAction('笔记', '笔记', function(){
+        // 笔记功能预留：当前仅占位，后续实现
+    });
+    noteBtn.style.fontSize = '12px';
+    row1.appendChild(noteBtn);
+    row1.appendChild(makeSep());
+    var copyBtn = makeAction('复制', '复制选中文本', function(){
+        copySelection();
+    });
+    copyBtn.style.fontSize = '12px';
+    row1.appendChild(copyBtn);
+
+    // ── 第二行：高亮色、下划线 ──
+    HIGHLIGHT_COLORS.forEach(function(c){ row2.appendChild(makeDot(c)); });
+    row2.appendChild(makeSep());
     var underlineBtn = makeAction('U', '下划线', function(){
         createFromSelection(UNDERLINE_COLOR, 'underline');
     });
     underlineBtn.style.textDecoration = 'underline';
     underlineBtn.style.textDecorationThickness = '2px';
     underlineBtn.style.textUnderlineOffset = '2px';
-    bar.appendChild(underlineBtn);
-    // ── 扩展点：后续批注等操作可在此追加，例如 ──
-    // bar.appendChild(makeSep());
-    // bar.appendChild(makeAction('批', '批注', function(){ /* createAnnotation(); */ }));
+    row2.appendChild(underlineBtn);
 
+    bar.appendChild(row1);
+    bar.appendChild(row2);
     document.body.appendChild(bar);
+
+    // ── 复制选中文本 ──
+    function copySelection() {
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBar(); return; }
+        var text = sel.toString();
+        if (!text) { hideBar(); return; }
+        try {
+            // 优先用 Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function(){
+                    hideBar();
+                }, function(){ fallbackCopy(text); });
+            } else {
+                fallbackCopy(text);
+            }
+        } catch(e) {
+            fallbackCopy(text);
+        }
+    }
+
+    // 兜底复制：用临时 textarea + document.execCommand
+    function fallbackCopy(text) {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            var ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch(e) {}
+        hideBar();
+    }
 
     // ── 由选区创建标注 ──
     function createFromSelection(color, style) {
