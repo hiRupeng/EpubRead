@@ -94,11 +94,22 @@ public partial class ReaderViewModel : ObservableObject
     public event EventHandler<(int chapterIndex, int totalChapters)>? ProgressChanged;
     /// <summary>阅读设置变化时触发，传递要注入的 JavaScript 代码</summary>
     public event EventHandler<string>? StyleInjectionRequested;
+    /// <summary>章节内容加载完成，触发高亮恢复（传递 JSON 笔记数组）</summary>
+    public event EventHandler<string>? HighlightsRestoreRequested;
+    /// <summary>创建高亮（传递 JSON 选区信息），由 Page 上报选区后触发</summary>
+    public event EventHandler<string>? HighlightCreated;
+    /// <summary>删除高亮（传递笔记 Id）</summary>
+    public event EventHandler<string>? HighlightDeleted;
 
-    public ReaderViewModel(EpubParser epubParser, ReadingSettingsService settingsService)
+    private readonly NoteService _noteService;
+    private readonly string _bookId;
+
+    public ReaderViewModel(EpubParser epubParser, ReadingSettingsService settingsService, NoteService noteService, string bookId)
     {
         _epubParser = epubParser;
         _settingsService = settingsService;
+        _noteService = noteService;
+        _bookId = bookId;
     }
 
     // ─── 书籍加载 ───
@@ -262,6 +273,79 @@ public partial class ReaderViewModel : ObservableObject
         var idx = FlatChapters.IndexOf(chapter);
         if (idx >= 0)
             ProgressChanged?.Invoke(this, (idx, FlatChapters.Count));
+
+        // 触发高亮恢复：查询本章笔记并通过 Page 注入渲染
+        RestoreHighlights(chapter.Href);
+    }
+
+    // ─── 高亮笔记 ───
+
+    /// <summary>
+    /// 恢复指定章节的高亮：查询数据库并通过事件通知 Page 注入渲染脚本
+    /// </summary>
+    private void RestoreHighlights(string chapterHref)
+    {
+        var notes = _noteService.GetNotes(_bookId, chapterHref);
+        if (notes.Count == 0) return;
+
+        var json = System.Text.Json.JsonSerializer.Serialize(notes.Select(n => new
+        {
+            id = n.Id,
+            startOffset = n.StartOffset,
+            endOffset = n.EndOffset,
+            text = n.SelectedText,
+            color = n.Color
+        }));
+        HighlightsRestoreRequested?.Invoke(this, json);
+    }
+
+    /// <summary>
+    /// 处理来自 HTML 的创建高亮请求（选区信息 JSON）
+    /// </summary>
+    public void CreateHighlight(string selectionJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(selectionJson);
+            var root = doc.RootElement;
+            var note = new Note
+            {
+                BookId = _bookId,
+                ChapterHref = CurrentChapter?.Href ?? "",
+                StartOffset = root.GetProperty("startOffset").GetInt32(),
+                EndOffset = root.GetProperty("endOffset").GetInt32(),
+                SelectedText = root.GetProperty("text").GetString() ?? "",
+                Color = root.TryGetProperty("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? c.GetString() ?? "#FFE082"
+                    : "#FFE082",
+                CreatedAt = DateTime.Now
+            };
+            _noteService.SaveNote(note);
+
+            // 通知 Page 渲染该高亮
+            var renderJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                id = note.Id,
+                startOffset = note.StartOffset,
+                endOffset = note.EndOffset,
+                text = note.SelectedText,
+                color = note.Color
+            });
+            HighlightCreated?.Invoke(this, renderJson);
+        }
+        catch
+        {
+            // 选区数据异常，忽略
+        }
+    }
+
+    /// <summary>
+    /// 删除指定高亮笔记
+    /// </summary>
+    public void DeleteHighlight(string noteId)
+    {
+        _noteService.DeleteNote(noteId);
+        HighlightDeleted?.Invoke(this, noteId);
     }
 
     /// <summary>

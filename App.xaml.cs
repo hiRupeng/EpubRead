@@ -38,11 +38,15 @@ public partial class App : Application
         var settingsService = new ReadingSettingsService(DbPath);
         settingsService.InitializeTable();
 
+        // 高亮笔记服务
+        var noteService = new NoteService(DbPath);
+        noteService.InitializeTable();
+
         // 创建服务
         var epubParser = new EpubParser();
 
         // 启动主窗口
-        var mainWindow = new MainWindow(bookshelfService, epubParser, settingsService, AppDataDir);
+        var mainWindow = new MainWindow(bookshelfService, epubParser, settingsService, noteService, AppDataDir);
         mainWindow.Show();
     }
 

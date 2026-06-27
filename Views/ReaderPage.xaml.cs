@@ -24,6 +24,9 @@ public partial class ReaderPage : System.Windows.Controls.Page
         _viewModel.ScrollToAnchorRequested += OnScrollToAnchorRequested;
         _viewModel.GoBackRequested += OnGoBackRequested;
         _viewModel.StyleInjectionRequested += OnStyleInjectionRequested;
+        _viewModel.HighlightsRestoreRequested += OnHighlightsRestoreRequested;
+        _viewModel.HighlightCreated += OnHighlightCreated;
+        _viewModel.HighlightDeleted += OnHighlightDeleted;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         // 应用初始主题画刷
@@ -282,6 +285,8 @@ public partial class ReaderPage : System.Windows.Controls.Page
 
         // 注入内部链接拦截脚本（每次导航完成后注入，确保覆盖新内容）
         _ = InjectLinkInterceptorAsync();
+        // 注入高亮笔记交互脚本
+        _ = InjectHighlightScriptAsync();
 
         // 处理待处理的锚点滚动
         if (_pendingAnchor != null)
@@ -344,11 +349,32 @@ public partial class ReaderPage : System.Windows.Controls.Page
     {
         try
         {
-            var href = e.TryGetWebMessageAsString();
-            if (!string.IsNullOrEmpty(href))
+            var raw = e.TryGetWebMessageAsString();
+            if (string.IsNullOrEmpty(raw)) return;
+
+            // 支持带类型前缀的消息协议："<type>|<payload>"
+            // 兼容旧的纯链接消息（无前缀视为内部链接）
+            var sep = raw.IndexOf('|');
+            if (sep > 0 && sep < 24)
             {
-                _viewModel.NavigateToHref(href);
+                var type = raw[..sep];
+                var payload = raw[(sep + 1)..];
+                switch (type)
+                {
+                    case "link":
+                        _viewModel.NavigateToHref(payload);
+                        return;
+                    case "hl-create":
+                        _viewModel.CreateHighlight(payload);
+                        return;
+                    case "hl-delete":
+                        _viewModel.DeleteHighlight(payload);
+                        return;
+                }
             }
+
+            // 兼容旧格式：纯 href
+            _viewModel.NavigateToHref(raw);
         }
         catch
         {
@@ -378,7 +404,7 @@ public partial class ReaderPage : System.Windows.Controls.Page
         // 拦截内部链接（相对路径、锚点等），阻止默认导航并通过 postMessage 通知宿主
         ev.preventDefault();
         ev.stopPropagation();
-        window.chrome.webview.postMessage(href);
+        window.chrome.webview.postMessage('link|' + href);
     }, true);
 })();
 ";
@@ -390,6 +416,257 @@ public partial class ReaderPage : System.Windows.Controls.Page
         {
             // 页面未就绪等场景忽略
         }
+    }
+
+    /// <summary>
+    /// 注入高亮笔记交互脚本：选中文本显示浮动高亮按钮、渲染/删除高亮。
+    /// 使用全局字符偏移定位（遍历 .reading-card 内所有文本节点累加），不依赖 DOM 路径。
+    /// 通过 postMessage 与宿主通信（消息格式 "hl-create|{json}" / "hl-delete|{noteId}"）。
+    /// </summary>
+    private async Task InjectHighlightScriptAsync()
+    {
+        if (WebView.CoreWebView2 == null) return;
+
+        // 注意：此脚本在 C# 逐字字符串 @"..." 中，其中的 "" 表示一个双引号字符。
+        // ExecuteScriptAsync 会以 JSON 解析参数，"" 在 JSON 字符串内合法（表示一个双引号）。
+        const string script = @"
+(function() {
+    if (document.getElementById('hl-fab')) return;
+
+    function getCard() { return document.querySelector('.reading-card'); }
+
+    var btn = document.createElement('div');
+    btn.id = 'hl-fab';
+    btn.textContent = 'Highlight';
+    btn.style.cssText = 'position:fixed;display:none;z-index:99999;background:#333;color:#fff;font:12px sans-serif;padding:6px 14px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);user-select:none;';
+    document.body.appendChild(btn);
+
+    btn.addEventListener('mousedown', function(ev) { ev.preventDefault(); ev.stopPropagation(); });
+    btn.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBtn(); return; }
+        var range = sel.getRangeAt(0);
+        var info = buildSelectionInfo(range, '#FFE082');
+        if (info) {
+            window.chrome.webview.postMessage('hl-create|' + JSON.stringify(info));
+        }
+        sel.removeAllRanges();
+        hideBtn();
+    });
+
+    function hideBtn() { btn.style.display = 'none'; }
+
+    function showBtnForSelection() {
+        var card = getCard();
+        if (!card) { hideBtn(); return; }
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBtn(); return; }
+        var range = sel.getRangeAt(0);
+        if (!card.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+        var rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) { hideBtn(); return; }
+        btn.style.display = 'block';
+        var btnW = 90, btnH = 30;
+        var left = rect.left + rect.width / 2 - btnW / 2;
+        var top = rect.top - btnH - 6;
+        if (top < 4) top = rect.bottom + 6;
+        if (left < 4) left = 4;
+        if (left + btnW > window.innerWidth - 4) left = window.innerWidth - btnW - 4;
+        btn.style.left = left + 'px';
+        btn.style.top = top + 'px';
+    }
+
+    // 用 selectionchange 监听选区变化，比 mouseup 更可靠（键盘选择也能触发）
+    document.addEventListener('selectionchange', function() {
+        var sel = window.getSelection();
+        if (!sel || sel.isCollapsed) { hideBtn(); return; }
+        // 延迟一帧，确保 getBoundingClientRect 反映最终位置
+        setTimeout(showBtnForSelection, 0);
+    });
+
+    document.addEventListener('mousedown', function(ev) {
+        if (ev.target !== btn) hideBtn();
+    }, true);
+
+    function getGlobalOffset(node, offset) {
+        var card = getCard();
+        if (!card) return -1;
+        var walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+        var total = 0;
+        if (node.nodeType === 3) {
+            while (walker.nextNode()) {
+                if (walker.currentNode === node) return total + offset;
+                total += walker.currentNode.length;
+            }
+        } else {
+            var childNodes = node.childNodes;
+            for (var i = 0; i < offset && i < childNodes.length; i++) {
+                var subWalker = document.createTreeWalker(childNodes[i], NodeFilter.SHOW_TEXT);
+                while (subWalker.nextNode()) total += subWalker.currentNode.length;
+            }
+            walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+            var foundNode = false;
+            while (walker.nextNode()) {
+                if (foundNode) break;
+                if (walker.currentNode.parentNode === node || node.contains(walker.currentNode)) {
+                    foundNode = true;
+                    continue;
+                }
+                total += walker.currentNode.length;
+            }
+        }
+        return total;
+    }
+
+    function findPosition(globalOffset) {
+        var card = getCard();
+        if (!card) return null;
+        var walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+        var total = 0;
+        while (walker.nextNode()) {
+            var tn = walker.currentNode;
+            if (total + tn.length >= globalOffset) {
+                return { node: tn, offset: globalOffset - total };
+            }
+            total += tn.length;
+        }
+        return null;
+    }
+
+    function buildSelectionInfo(range, color) {
+        try {
+            var text = range.toString();
+            if (!text.trim()) return null;
+            var startOff = getGlobalOffset(range.startContainer, range.startOffset);
+            var endOff = getGlobalOffset(range.endContainer, range.endOffset);
+            if (startOff < 0 || endOff < 0) return null;
+            return { startOffset: startOff, endOffset: endOff, text: text, color: color };
+        } catch(e) { return null; }
+    }
+
+    function getTextNodesInRange(range) {
+        var nodes = [];
+        var root = range.commonAncestorContainer;
+        var walkerRoot = root.nodeType === 3 ? root.parentNode : root;
+        var walker = document.createTreeWalker(walkerRoot, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            var tn = walker.currentNode;
+            var nodeRange = document.createRange();
+            nodeRange.selectNodeContents(tn);
+            var startCmp = range.compareBoundaryPoints(Range.START_TO_END, nodeRange);
+            var endCmp = range.compareBoundaryPoints(Range.END_TO_START, nodeRange);
+            if (startCmp >= 0 && endCmp <= 0) nodes.push(tn);
+        }
+        return nodes;
+    }
+
+    window.__epubRenderHighlight = function(n) {
+        try {
+            var startPos = findPosition(n.startOffset);
+            var endPos = findPosition(n.endOffset);
+            if (!startPos || !endPos) return false;
+            var range = document.createRange();
+            range.setStart(startPos.node, startPos.offset);
+            range.setEnd(endPos.node, endPos.offset);
+            var actual = range.toString().replace(/\s+/g, '');
+            var expect = (n.text || '').replace(/\s+/g, '');
+            if (actual !== expect) return false;
+            var textNodes = getTextNodesInRange(range);
+            if (textNodes.length === 0) return false;
+            textNodes.forEach(function(tn) {
+                var sOff = (tn === range.startContainer) ? range.startOffset : 0;
+                var eOff = (tn === range.endContainer) ? range.endOffset : tn.length;
+                if (sOff >= eOff) return;
+                var span = document.createElement('span');
+                span.className = 'hl-note';
+                span.setAttribute('data-note-id', n.id);
+                span.style.cssText = 'background:' + n.color + ';border-radius:2px;cursor:pointer;';
+                span.addEventListener('click', function(ev) {
+                    ev.stopPropagation();
+                    if (confirm('Delete this highlight?')) {
+                        window.chrome.webview.postMessage('hl-delete|' + n.id);
+                    }
+                });
+                var innerRange = document.createRange();
+                innerRange.setStart(tn, sOff);
+                innerRange.setEnd(tn, eOff);
+                innerRange.surroundContents(span);
+            });
+            return true;
+        } catch(e) { return false; }
+    };
+
+    window.__epubRestoreHighlights = function(notesJson) {
+        try {
+            var notes = JSON.parse(notesJson);
+            notes.forEach(function(n) { window.__epubRenderHighlight(n); });
+        } catch(e) {}
+    };
+
+    window.__epubRemoveHighlight = function(noteId) {
+        var spans = document.querySelectorAll('.hl-note[data-note-id=""' + noteId + '""]');
+        spans.forEach(function(span) {
+            var parent = span.parentNode;
+            while (span.firstChild) parent.insertBefore(span.firstChild, span);
+            parent.removeChild(span);
+            parent.normalize();
+        });
+    };
+})();
+";
+        try
+        {
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch
+        {
+            // 页面未就绪等场景忽略
+        }
+    }
+
+    /// <summary>章节加载后恢复高亮：注入笔记 JSON 并调用渲染函数</summary>
+    private async void OnHighlightsRestoreRequested(object? sender, string notesJson)
+    {
+        if (WebView.CoreWebView2 == null || string.IsNullOrEmpty(notesJson)) return;
+        if (!_navigationCompleted)
+        {
+            await Task.Delay(250);
+        }
+        try
+        {
+            // notesJson 是 JSON 数组字符串，直接作为 JS 字面量传入
+            var script = $"window.__epubRestoreHighlights && window.__epubRestoreHighlights('{notesJson}');";
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch { }
+    }
+
+    /// <summary>创建高亮成功后渲染该高亮</summary>
+    private async void OnHighlightCreated(object? sender, string renderJson)
+    {
+        if (WebView.CoreWebView2 == null || string.IsNullOrEmpty(renderJson)) return;
+        try
+        {
+            // renderJson 是合法 JSON，同时也是合法的 JS 对象字面量，直接嵌入即可
+            var script = $"window.__epubRenderHighlight && window.__epubRenderHighlight({renderJson});";
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch { }
+    }
+
+    /// <summary>删除高亮后移除 DOM 标记</summary>
+    private async void OnHighlightDeleted(object? sender, string noteId)
+    {
+        if (WebView.CoreWebView2 == null || string.IsNullOrEmpty(noteId)) return;
+        try
+        {
+            var escaped = noteId.Replace("'", "\\'");
+            var script = $"window.__epubRemoveHighlight && window.__epubRemoveHighlight('{escaped}');";
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch { }
     }
 
     private void OnGoBackRequested(object? sender, EventArgs e)
