@@ -370,6 +370,12 @@ public partial class ReaderPage : System.Windows.Controls.Page
                     case "hl-delete":
                         _viewModel.DeleteHighlight(payload);
                         return;
+                    case "hl-bar-show":
+                        _viewModel.IsToolbarEnabled = false;
+                        return;
+                    case "hl-bar-hide":
+                        _viewModel.IsToolbarEnabled = true;
+                        return;
                 }
             }
 
@@ -431,63 +437,204 @@ public partial class ReaderPage : System.Windows.Controls.Page
         // ExecuteScriptAsync 会以 JSON 解析参数，"" 在 JSON 字符串内合法（表示一个双引号）。
         const string script = @"
 (function() {
-    if (document.getElementById('hl-fab')) return;
+    if (document.getElementById('hl-toolbar')) return;
 
     function getCard() { return document.querySelector('.reading-card'); }
 
-    var btn = document.createElement('div');
-    btn.id = 'hl-fab';
-    btn.textContent = 'Highlight';
-    btn.style.cssText = 'position:fixed;display:none;z-index:99999;background:#333;color:#fff;font:12px sans-serif;padding:6px 14px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);user-select:none;';
-    document.body.appendChild(btn);
+    // ── 颜色与样式配置（修改此处即可扩展调色板 / 样式） ──
+    var HIGHLIGHT_COLORS = ['#FFE082','#A5D6A7','#90CAF9','#F48FB1','#CE93D8'];
+    var UNDERLINE_COLOR  = '#FF7043';
 
-    btn.addEventListener('mousedown', function(ev) { ev.preventDefault(); ev.stopPropagation(); });
-    btn.addEventListener('click', function(ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
+    // ── 构建浮动工具栏 ──
+    var bar = document.createElement('div');
+    bar.id = 'hl-toolbar';
+    bar.style.cssText = 'position:fixed;z-index:99999;display:none;flex-direction:row;align-items:center;' +
+        'gap:2px;background:#2B2B2B;border-radius:10px;padding:6px;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,0.45);user-select:none;' +
+        'font:12px/1 ""Microsoft YaHei"",sans-serif;';
+
+    function makeDot(color) {
+        var d = document.createElement('span');
+        d.style.cssText = 'display:inline-block;width:22px;height:22px;border-radius:50%;' +
+            'background:' + color + ';cursor:pointer;border:2px solid rgba(255,255,255,0.25);' +
+            'transition:transform .12s ease;';
+        d.title = '高亮';
+        d.addEventListener('mouseenter', function(){ d.style.transform = 'scale(1.18)'; });
+        d.addEventListener('mouseleave', function(){ d.style.transform = 'scale(1)'; });
+        d.addEventListener('mousedown', function(ev){ ev.preventDefault(); ev.stopPropagation(); });
+        d.addEventListener('click', function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            createFromSelection(color, 'highlight');
+        });
+        return d;
+    }
+
+    function makeSep() {
+        var s = document.createElement('span');
+        s.style.cssText = 'display:inline-block;width:1px;height:20px;background:rgba(255,255,255,0.18);margin:0 2px;';
+        return s;
+    }
+
+    function makeAction(label, title, handler) {
+        var b = document.createElement('span');
+        b.textContent = label;
+        b.title = title;
+        b.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+            'min-width:30px;height:26px;padding:0 8px;border-radius:6px;color:#E8E8EC;' +
+            'cursor:pointer;font-weight:600;transition:background .12s ease;';
+        b.addEventListener('mouseenter', function(){ b.style.background = 'rgba(255,255,255,0.12)'; });
+        b.addEventListener('mouseleave', function(){ b.style.background = 'transparent'; });
+        b.addEventListener('mousedown', function(ev){ ev.preventDefault(); ev.stopPropagation(); });
+        b.addEventListener('click', function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            handler();
+        });
+        return b;
+    }
+
+    // 颜色组
+    HIGHLIGHT_COLORS.forEach(function(c){ bar.appendChild(makeDot(c)); });
+    bar.appendChild(makeSep());
+    // 下划线
+    var underlineBtn = makeAction('U', '下划线', function(){
+        createFromSelection(UNDERLINE_COLOR, 'underline');
+    });
+    underlineBtn.style.textDecoration = 'underline';
+    underlineBtn.style.textDecorationThickness = '2px';
+    underlineBtn.style.textUnderlineOffset = '2px';
+    bar.appendChild(underlineBtn);
+    // ── 扩展点：后续批注等操作可在此追加，例如 ──
+    // bar.appendChild(makeSep());
+    // bar.appendChild(makeAction('批', '批注', function(){ /* createAnnotation(); */ }));
+
+    document.body.appendChild(bar);
+
+    // ── 由选区创建标注 ──
+    function createFromSelection(color, style) {
         var sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBtn(); return; }
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBar(); return; }
         var range = sel.getRangeAt(0);
-        var info = buildSelectionInfo(range, '#FFE082');
+        var info = buildSelectionInfo(range, color, style);
         if (info) {
             window.chrome.webview.postMessage('hl-create|' + JSON.stringify(info));
         }
         sel.removeAllRanges();
-        hideBtn();
-    });
-
-    function hideBtn() { btn.style.display = 'none'; }
-
-    function showBtnForSelection() {
-        var card = getCard();
-        if (!card) { hideBtn(); return; }
-        var sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBtn(); return; }
-        var range = sel.getRangeAt(0);
-        if (!card.contains(range.commonAncestorContainer)) { hideBtn(); return; }
-        var rect = range.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0) { hideBtn(); return; }
-        btn.style.display = 'block';
-        var btnW = 90, btnH = 30;
-        var left = rect.left + rect.width / 2 - btnW / 2;
-        var top = rect.top - btnH - 6;
-        if (top < 4) top = rect.bottom + 6;
-        if (left < 4) left = 4;
-        if (left + btnW > window.innerWidth - 4) left = window.innerWidth - btnW - 4;
-        btn.style.left = left + 'px';
-        btn.style.top = top + 'px';
+        hideBar();
     }
 
-    // 用 selectionchange 监听选区变化，比 mouseup 更可靠（键盘选择也能触发）
-    document.addEventListener('selectionchange', function() {
+    function hideBar() { bar.style.display = 'none'; window.chrome.webview.postMessage('hl-bar-hide|'); }
+
+    function showBarForSelection() {
+        var card = getCard();
+        if (!card) { hideBar(); return; }
         var sel = window.getSelection();
-        if (!sel || sel.isCollapsed) { hideBtn(); return; }
-        // 延迟一帧，确保 getBoundingClientRect 反映最终位置
-        setTimeout(showBtnForSelection, 0);
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBar(); return; }
+        var range = sel.getRangeAt(0);
+        if (!card.contains(range.commonAncestorContainer)) { hideBar(); return; }
+
+        // 取选区每一行的客户端矩形，最后一个即为选中结束所在行，
+        // 用它定位浮窗到“最后一个字的右下角”，避免跨多行时位置偏远。
+        var rects = range.getClientRects();
+        if (rects.length === 0) { hideBar(); return; }
+        var rect = rects[rects.length - 1];
+        if (rect.width === 0 && rect.height === 0) { hideBar(); return; }
+
+        // 先以不可见方式渲染以测量尺寸
+        bar.style.display = 'flex';
+        bar.style.visibility = 'hidden';
+        var bw = bar.offsetWidth, bh = bar.offsetHeight;
+        bar.style.visibility = 'visible';
+
+        // 定位到选中结束的右下角：右边缘对齐最后一行右端，紧贴其下方
+        var gap = 8;
+        var left = rect.right - bw;
+        var top = rect.bottom + gap;
+        // 越界修正：下方放不下则上移到最后一行上方
+        if (top + bh > window.innerHeight - 4) top = rect.top - bh - gap;
+        if (top < 4) top = 4;
+        if (left < 4) left = 4;
+        if (left + bw > window.innerWidth - 4) left = window.innerWidth - bw - 4;
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        // 通知宿主禁用 WPF 工具栏/面板交互
+        window.chrome.webview.postMessage('hl-bar-show|');
+    }
+
+    // 仅在选区动作结束时（鼠标抬起 / 按键抬起）弹出浮窗，
+    // 避免选择过程中浮窗跟随选区实时移动。
+    document.addEventListener('mouseup', function() {
+        var sel = window.getSelection();
+        if (!sel || sel.isCollapsed) { hideBar(); return; }
+        // 延迟一帧，确保 getBoundingClientRect 反映最终选区位置
+        setTimeout(showBarForSelection, 0);
     });
 
+    // 支持键盘选择（Shift + 方向键）结束后也能弹出
+    document.addEventListener('keyup', function(ev) {
+        if (ev.shiftKey || ev.key === 'Shift' ||
+            ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' ||
+            ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+            var sel = window.getSelection();
+            if (!sel || sel.isCollapsed) { hideBar(); return; }
+            setTimeout(showBarForSelection, 0);
+        }
+    });
+
+    // ── 浮窗显示期间的全局交互锁 ──
+    // 仅允许两种操作：点击浮窗内按钮、点击浮窗外取消浮窗；
+    // 其余一切交互（拖动选区、键盘改选区、滚动、右键菜单、双击选词等）一律屏蔽。
+    function isBarVisible() { return bar.style.display !== 'none'; }
+
     document.addEventListener('mousedown', function(ev) {
-        if (ev.target !== btn) hideBtn();
+        // 点击浮窗内部：放行（按钮可正常响应）
+        if (bar.contains(ev.target)) return;
+        // 浮窗显示时点击外部：取消浮窗并清除选区，同时阻止开始任何新选区拖动
+        if (isBarVisible()) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var sel = window.getSelection();
+            if (sel) sel.removeAllRanges();
+            hideBar();
+        }
+    }, true);
+
+    // 屏蔽键盘：防止方向键/Shift 修改选区、Space/PageDown 滚动等
+    document.addEventListener('keydown', function(ev) {
+        if (isBarVisible() && !bar.contains(ev.target)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+    }, true);
+
+    // 屏蔽滚轮：浮窗显示期间禁止滚动页面
+    document.addEventListener('wheel', function(ev) {
+        if (isBarVisible()) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+    }, { capture: true, passive: false });
+
+    // 屏蔽右键菜单
+    document.addEventListener('contextmenu', function(ev) {
+        if (isBarVisible()) ev.preventDefault();
+    }, true);
+
+    // 屏蔽双击选词
+    document.addEventListener('dblclick', function(ev) {
+        if (isBarVisible() && !bar.contains(ev.target)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
+    }, true);
+
+    // 屏蔽新的选区拖动与文本拖拽
+    document.addEventListener('selectstart', function(ev) {
+        if (isBarVisible() && !bar.contains(ev.target)) {
+            ev.preventDefault();
+        }
+    }, true);
+    document.addEventListener('dragstart', function(ev) {
+        if (isBarVisible()) ev.preventDefault();
     }, true);
 
     function getGlobalOffset(node, offset) {
@@ -535,14 +682,14 @@ public partial class ReaderPage : System.Windows.Controls.Page
         return null;
     }
 
-    function buildSelectionInfo(range, color) {
+    function buildSelectionInfo(range, color, style) {
         try {
             var text = range.toString();
             if (!text.trim()) return null;
             var startOff = getGlobalOffset(range.startContainer, range.startOffset);
             var endOff = getGlobalOffset(range.endContainer, range.endOffset);
             if (startOff < 0 || endOff < 0) return null;
-            return { startOffset: startOff, endOffset: endOff, text: text, color: color };
+            return { startOffset: startOff, endOffset: endOff, text: text, color: color, style: style };
         } catch(e) { return null; }
     }
 
@@ -582,7 +729,11 @@ public partial class ReaderPage : System.Windows.Controls.Page
                 var span = document.createElement('span');
                 span.className = 'hl-note';
                 span.setAttribute('data-note-id', n.id);
-                span.style.cssText = 'background:' + n.color + ';border-radius:2px;cursor:pointer;';
+                if (n.style === 'underline') {
+                    span.style.cssText = 'border-bottom:2px solid ' + n.color + ';cursor:pointer;';
+                } else {
+                    span.style.cssText = 'background:' + n.color + ';border-radius:2px;cursor:pointer;';
+                }
                 span.addEventListener('click', function(ev) {
                     ev.stopPropagation();
                     if (confirm('Delete this highlight?')) {

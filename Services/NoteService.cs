@@ -53,6 +53,23 @@ public class NoteService
         var idxCmd = connection.CreateCommand();
         idxCmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Notes_Book_Chapter ON Notes(BookId, ChapterHref)";
         idxCmd.ExecuteNonQuery();
+
+        // 迁移：为旧表补充 Style / Comment 列（供下划线样式与后续批注使用）
+        EnsureColumn(connection, "Style", "TEXT NOT NULL DEFAULT 'highlight'");
+        EnsureColumn(connection, "Comment", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    /// <summary>若表缺少指定列则追加（SQLite ALTER TABLE ADD COLUMN），用于平滑升级旧库。</summary>
+    private static void EnsureColumn(Microsoft.Data.Sqlite.SqliteConnection connection, string column, string definition)
+    {
+        var check = connection.CreateCommand();
+        check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Notes') WHERE name = '{column}'";
+        if (Convert.ToInt64(check.ExecuteScalar()) == 0)
+        {
+            var add = connection.CreateCommand();
+            add.CommandText = $"ALTER TABLE Notes ADD COLUMN {column} {definition}";
+            add.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
@@ -65,7 +82,7 @@ public class NoteService
         connection.Open();
 
         var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, BookId, ChapterHref, StartOffset, EndOffset, SelectedText, Color, CreatedAt FROM Notes WHERE BookId = @bookId AND ChapterHref = @href ORDER BY StartOffset ASC";
+        cmd.CommandText = "SELECT Id, BookId, ChapterHref, StartOffset, EndOffset, SelectedText, Color, Style, Comment, CreatedAt FROM Notes WHERE BookId = @bookId AND ChapterHref = @href ORDER BY StartOffset ASC";
         cmd.Parameters.AddWithValue("@bookId", bookId);
         cmd.Parameters.AddWithValue("@href", chapterHref);
 
@@ -81,7 +98,9 @@ public class NoteService
                 EndOffset = reader.GetInt32(4),
                 SelectedText = reader.GetString(5),
                 Color = reader.GetString(6),
-                CreatedAt = DateTime.Parse(reader.GetString(7))
+                Style = reader.GetString(7),
+                Comment = reader.GetString(8),
+                CreatedAt = DateTime.Parse(reader.GetString(9))
             });
         }
         return list;
@@ -97,8 +116,8 @@ public class NoteService
 
         var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Notes (Id, BookId, ChapterHref, StartOffset, EndOffset, SelectedText, Color, CreatedAt)
-            VALUES (@id, @bookId, @href, @so, @eo, @text, @color, @created)
+            INSERT INTO Notes (Id, BookId, ChapterHref, StartOffset, EndOffset, SelectedText, Color, Style, Comment, CreatedAt)
+            VALUES (@id, @bookId, @href, @so, @eo, @text, @color, @style, @comment, @created)
             """;
         cmd.Parameters.AddWithValue("@id", note.Id);
         cmd.Parameters.AddWithValue("@bookId", note.BookId);
@@ -107,6 +126,8 @@ public class NoteService
         cmd.Parameters.AddWithValue("@eo", note.EndOffset);
         cmd.Parameters.AddWithValue("@text", note.SelectedText);
         cmd.Parameters.AddWithValue("@color", note.Color);
+        cmd.Parameters.AddWithValue("@style", note.Style);
+        cmd.Parameters.AddWithValue("@comment", note.Comment);
         cmd.Parameters.AddWithValue("@created", note.CreatedAt.ToString("O"));
         cmd.ExecuteNonQuery();
     }

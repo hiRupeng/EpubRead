@@ -26,5 +26,14 @@ public class Note
     /// <summary>高亮颜色（CSS 颜色值）</summary>
     public string Color { get; set; } = "#FFE082";
 
+    /// <summary>
+    /// 标注样式：highlight（背景高亮）/ underline（下划线）。
+    /// 预留扩展：annotation（批注）等可在后续追加。
+    /// </summary>
+    public string Style { get; set; } = "highlight";
+
+    /// <summary>批注内容（预留，供后续批注功能使用）</summary>
+    public string Comment { get; set; } = string.Empty;
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

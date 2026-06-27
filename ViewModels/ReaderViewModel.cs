@@ -45,6 +45,13 @@ public partial class ReaderViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSettingsOpen;
 
+    /// <summary>
+    /// 工具栏/面板是否可交互。高亮浮窗显示期间置 false，
+    /// 禁用顶部工具栏、底部导航、目录与设置面板，确保只能操作浮窗或点击外部取消。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isToolbarEnabled = true;
+
     // ─── 导航状态 ───
 
     [ObservableProperty]
@@ -294,7 +301,8 @@ public partial class ReaderViewModel : ObservableObject
             startOffset = n.StartOffset,
             endOffset = n.EndOffset,
             text = n.SelectedText,
-            color = n.Color
+            color = n.Color,
+            style = n.Style
         }));
         HighlightsRestoreRequested?.Invoke(this, json);
     }
@@ -318,6 +326,9 @@ public partial class ReaderViewModel : ObservableObject
                 Color = root.TryGetProperty("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
                     ? c.GetString() ?? "#FFE082"
                     : "#FFE082",
+                Style = root.TryGetProperty("style", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? st.GetString() ?? "highlight"
+                    : "highlight",
                 CreatedAt = DateTime.Now
             };
             _noteService.SaveNote(note);
@@ -329,7 +340,8 @@ public partial class ReaderViewModel : ObservableObject
                 startOffset = note.StartOffset,
                 endOffset = note.EndOffset,
                 text = note.SelectedText,
-                color = note.Color
+                color = note.Color,
+                style = note.Style
             });
             HighlightCreated?.Invoke(this, renderJson);
         }

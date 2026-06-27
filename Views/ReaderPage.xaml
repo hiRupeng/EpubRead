@@ -271,11 +271,11 @@
                 <RowDefinition Height="56" />
                 <RowDefinition Height="3" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="56" />
             </Grid.RowDefinitions>
 
             <!-- 顶部工具栏 -->
-            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{Binding UiTheme.ToolbarBackground}" Panel.ZIndex="10">
+            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{Binding UiTheme.ToolbarBackground}" Panel.ZIndex="10"
+                    IsEnabled="{Binding IsToolbarEnabled}">
                 <Border.Effect>
                     <DropShadowEffect ShadowDepth="0" BlurRadius="10" Opacity="0.35" Color="#000000" Direction="270" />
                 </Border.Effect>
@@ -301,6 +301,16 @@
                     </TextBlock>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Content="◀" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding NavigatePrevCommand}"
+                                IsEnabled="{Binding HasPrev}" ToolTip="上一章" FontSize="13" />
+                        <TextBlock Text="{Binding ProgressText}" Foreground="{Binding UiTheme.SecondaryText}"
+                                   FontSize="12" VerticalAlignment="Center" Margin="6,0"
+                                   ToolTip="当前章节 / 总章节数" />
+                        <Button Content="▶" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding NavigateNextCommand}"
+                                IsEnabled="{Binding HasNext}" ToolTip="下一章" FontSize="13" />
+                        <Border Width="1" Height="20" Background="{Binding UiTheme.DividerColor}" Margin="4,0" />
                         <Button Content="A−" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding DecreaseFontSizeCommand}"
                                 FontWeight="Bold" FontSize="15" ToolTip="缩小字体" />
@@ -311,8 +321,8 @@
                         <Button Content="⚙" Style="{StaticResource ReaderButtonStyle}"
                                 Command="{Binding ToggleSettingsCommand}"
                                 FontSize="18" ToolTip="阅读设置" />
-                        <Button Content="☰ 目录" Style="{StaticResource ReaderButtonStyle}"
-                                Command="{Binding ToggleTocCommand}" />
+                        <Button Content="☰" Style="{StaticResource ReaderButtonStyle}"
+                                Command="{Binding ToggleTocCommand}" ToolTip="目录" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -328,7 +338,8 @@
             <Border Grid.Row="2" Grid.Column="1"
                     Width="280"
                     Visibility="{Binding IsTocOpen, Converter={StaticResource BoolToVisibility}}"
-                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0">
+                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0"
+                    IsEnabled="{Binding IsToolbarEnabled}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="40" />
@@ -353,36 +364,12 @@
             <!-- WebView2 阅读区域（卡片样式由 HTML 内部 .reading-card 实现，控件填满整个区域） -->
             <wv2:WebView2 Grid.Row="2" Grid.Column="0" x:Name="WebView" />
 
-            <!-- 底部导航栏 -->
-            <Border Grid.Row="3" Grid.ColumnSpan="2"
-                    Background="{Binding UiTheme.ToolbarBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="0,1,0,0">
-                <Grid Margin="16,0">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ProgressText}" Foreground="{Binding UiTheme.TertiaryText}"
-                                   FontSize="12" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                        <Button Content="◀ 上一章" Style="{StaticResource ReaderButtonStyle}"
-                                Command="{Binding NavigatePrevCommand}"
-                                IsEnabled="{Binding HasPrev}" />
-                        <Border Background="{DynamicResource ProgressCapsuleBrush}" CornerRadius="14"
-                                Padding="22,7" Margin="16,0">
-                            <TextBlock Text="{Binding ProgressText}" Foreground="{Binding UiTheme.SecondaryText}"
-                                       FontSize="13" FontWeight="Medium" />
-                        </Border>
-                        <Button Content="下一章 ▶" Style="{StaticResource ReaderButtonStyle}"
-                                Command="{Binding NavigateNextCommand}"
-                                IsEnabled="{Binding HasNext}" />
-                    </StackPanel>
-                </Grid>
-            </Border>
             <!-- 右侧设置面板（可折叠侧栏，与目录面板共享右列，互斥显示） -->
             <Border Grid.Row="2" Grid.Column="1"
                     Width="300"
                     Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVisibility}}"
-                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0">
+                    Background="{Binding UiTheme.PanelBackground}" BorderBrush="{Binding UiTheme.DividerColor}" BorderThickness="1,0,0,0"
+                    IsEnabled="{Binding IsToolbarEnabled}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,16,16,24">
 
