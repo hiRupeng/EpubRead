@@ -107,6 +107,8 @@ public partial class ReaderViewModel : ObservableObject
     public event EventHandler<string>? HighlightCreated;
     /// <summary>删除高亮（传递笔记 Id）</summary>
     public event EventHandler<string>? HighlightDeleted;
+    /// <summary>批注内容更新（传递 JSON：id + comment），由 Page 上报编辑后触发</summary>
+    public event EventHandler<string>? AnnotationUpdated;
 
     private readonly NoteService _noteService;
     private readonly string _bookId;
@@ -302,9 +304,20 @@ public partial class ReaderViewModel : ObservableObject
             endOffset = n.EndOffset,
             text = n.SelectedText,
             color = n.Color,
-            style = n.Style
+            style = n.Style,
+            comment = n.Comment
         }));
         HighlightsRestoreRequested?.Invoke(this, json);
+    }
+
+    /// <summary>
+    /// 重新拉取当前章节笔记并重渲染（编辑批注样式后调用）。
+    /// 先通知 Page 清除现有标注 DOM，再注入最新笔记。
+    /// </summary>
+    public void RefreshHighlights()
+    {
+        if (CurrentChapter == null) return;
+        RestoreHighlights(CurrentChapter.Href);
     }
 
     /// <summary>
@@ -341,7 +354,8 @@ public partial class ReaderViewModel : ObservableObject
                 endOffset = note.EndOffset,
                 text = note.SelectedText,
                 color = note.Color,
-                style = note.Style
+                style = note.Style,
+                comment = note.Comment
             });
             HighlightCreated?.Invoke(this, renderJson);
         }
@@ -358,6 +372,92 @@ public partial class ReaderViewModel : ObservableObject
     {
         _noteService.DeleteNote(noteId);
         HighlightDeleted?.Invoke(this, noteId);
+    }
+
+    /// <summary>
+    /// 处理来自 HTML 的创建批注请求（选区信息 + 批注内容 JSON）。
+    /// 与 CreateHighlight 的区别：携带 comment，保存为带批注的标注。
+    /// </summary>
+    public void CreateAnnotation(string payloadJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payloadJson);
+            var root = doc.RootElement;
+            var note = new Note
+            {
+                BookId = _bookId,
+                ChapterHref = CurrentChapter?.Href ?? "",
+                StartOffset = root.GetProperty("startOffset").GetInt32(),
+                EndOffset = root.GetProperty("endOffset").GetInt32(),
+                SelectedText = root.GetProperty("text").GetString() ?? "",
+                Color = root.TryGetProperty("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? c.GetString() ?? "#FFE082"
+                    : "#FFE082",
+                Style = root.TryGetProperty("style", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? st.GetString() ?? "highlight"
+                    : "highlight",
+                Comment = root.TryGetProperty("comment", out var cm) && cm.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? cm.GetString() ?? ""
+                    : "",
+                CreatedAt = DateTime.Now
+            };
+            _noteService.SaveNote(note);
+
+            var renderJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                id = note.Id,
+                startOffset = note.StartOffset,
+                endOffset = note.EndOffset,
+                text = note.SelectedText,
+                color = note.Color,
+                style = note.Style,
+                comment = note.Comment
+            });
+            HighlightCreated?.Invoke(this, renderJson);
+        }
+        catch
+        {
+            // 选区/批注数据异常，忽略
+        }
+    }
+
+    /// <summary>
+    /// 处理来自 HTML 的编辑批注请求（id + comment + color + style JSON）。
+    /// 更新数据库后通知 Page 同步 DOM（重渲染标注）。
+    /// </summary>
+    public void UpdateAnnotation(string payloadJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payloadJson);
+            var root = doc.RootElement;
+            var id = root.GetProperty("id").GetString() ?? "";
+            if (string.IsNullOrEmpty(id)) return;
+
+            var comment = root.TryGetProperty("comment", out var cm) && cm.ValueKind == System.Text.Json.JsonValueKind.String
+                ? cm.GetString() ?? ""
+                : "";
+            var color = root.TryGetProperty("color", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
+                ? c.GetString() ?? "#FFE082"
+                : "#FFE082";
+            var style = root.TryGetProperty("style", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String
+                ? st.GetString() ?? "highlight"
+                : "highlight";
+
+            _noteService.UpdateNote(id, comment, color, style);
+            AnnotationUpdated?.Invoke(this, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                id,
+                comment,
+                color,
+                style
+            }));
+        }
+        catch
+        {
+            // 数据异常，忽略
+        }
     }
 
     /// <summary>

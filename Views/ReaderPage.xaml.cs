@@ -27,6 +27,7 @@ public partial class ReaderPage : System.Windows.Controls.Page
         _viewModel.HighlightsRestoreRequested += OnHighlightsRestoreRequested;
         _viewModel.HighlightCreated += OnHighlightCreated;
         _viewModel.HighlightDeleted += OnHighlightDeleted;
+        _viewModel.AnnotationUpdated += OnAnnotationUpdated;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         // 应用初始主题画刷
@@ -160,12 +161,40 @@ public partial class ReaderPage : System.Windows.Controls.Page
         // 订阅 Web 消息事件（用于接收 EPUB 内容中内部链接的点击）
         WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
-        // WebView2 就绪后，如果有等待的 HTML 内容则立即渲染
+        // WebView2 就绪后，如果有等待的 HTML 内容则渲染。
+        // NavigationCompleted 在首次 NavigateToString 时不稳定触发（受 HTML 大小、
+        // 资源加载等因素影响），因此同时订阅事件 + 用短定时器兜底，确保脚本一定被注入。
         if (_pendingHtml != null)
         {
-            WebView.CoreWebView2.NavigateToString(_pendingHtml);
+            var html = _pendingHtml;
             _pendingHtml = null;
-            WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            _navigationCompleted = false;
+
+            void OnFirstNavCompleted(object? s, EventArgs ev)
+            {
+                WebView.CoreWebView2!.NavigationCompleted -= OnFirstNavCompleted;
+                OnNavigationCompleted(s, ev);
+            }
+
+            WebView.CoreWebView2.NavigationCompleted += OnFirstNavCompleted;
+            WebView.CoreWebView2.NavigateToString(html);
+
+            // 兜底：NavigationCompleted 未触发时，延迟注入确保脚本生效
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(300);
+                if (!_navigationCompleted)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (!_navigationCompleted)
+                        {
+                            WebView.CoreWebView2!.NavigationCompleted -= OnFirstNavCompleted;
+                            OnNavigationCompleted(this, EventArgs.Empty);
+                        }
+                    });
+                }
+            });
         }
         else
         {
@@ -367,14 +396,26 @@ public partial class ReaderPage : System.Windows.Controls.Page
                     case "hl-create":
                         _viewModel.CreateHighlight(payload);
                         return;
+                    case "hl-note":
+                        _viewModel.CreateAnnotation(payload);
+                        return;
+                    case "hl-note-edit":
+                        _viewModel.UpdateAnnotation(payload);
+                        return;
                     case "hl-delete":
                         _viewModel.DeleteHighlight(payload);
+                        return;
+                    case "hl-refresh":
+                        _viewModel.RefreshHighlights();
                         return;
                     case "hl-bar-show":
                         _viewModel.IsToolbarEnabled = false;
                         return;
                     case "hl-bar-hide":
                         _viewModel.IsToolbarEnabled = true;
+                        return;
+                    // 其他带前缀消息（如调试）一律忽略，不走到兜底导航
+                    default:
                         return;
                 }
             }
@@ -444,8 +485,19 @@ public partial class ReaderPage : System.Windows.Controls.Page
     // ── 颜色与样式配置（修改此处即可扩展调色板 / 样式） ──
     var HIGHLIGHT_COLORS = ['#FFE082','#A5D6A7','#90CAF9','#F48FB1','#CE93D8'];
     var UNDERLINE_COLOR  = '#FF7043';
+    var ANNOTATION_COLOR = '#FFD180';   // 批注样式专用色（左侧色条 + 半透明底）
+    var NOTE_MARK_COLOR  = '#E53935';   // 带批注标注的统一标记色（波浪下划线）
 
-    // ── 构建浮动工具栏（两行布局：第一行操作按钮，第二行颜色与下划线） ──
+    // 注入样式：带批注的标注叠加红色波浪线，一眼区分“这里有笔记”
+    if (!document.getElementById('hl-note-style')) {
+        var styleEl = document.createElement('style');
+        styleEl.id = 'hl-note-style';
+        styleEl.textContent = '.hl-has-note{text-decoration:underline wavy ' + NOTE_MARK_COLOR +
+            ';text-decoration-thickness:1.5px;text-underline-offset:3px;}';
+        document.head.appendChild(styleEl);
+    }
+
+    // ── 构建浮动工具栏 ──
     var bar = document.createElement('div');
     bar.id = 'hl-toolbar';
     bar.style.cssText = 'position:fixed;z-index:99999;display:none;flex-direction:column;gap:4px;' +
@@ -453,13 +505,14 @@ public partial class ReaderPage : System.Windows.Controls.Page
         'box-shadow:0 6px 20px rgba(0,0,0,0.45);user-select:none;' +
         'font:12px/1 ""Microsoft YaHei"",sans-serif;';
 
-    // 第一行容器：笔记、复制等操作
     var row1 = document.createElement('div');
     row1.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:2px;';
-
-    // 第二行容器：高亮色、下划线
     var row2 = document.createElement('div');
     row2.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:2px;';
+
+    // 笔记输入面板（默认隐藏，点“笔记”时展开）
+    var notePanel = document.createElement('div');
+    notePanel.style.cssText = 'display:none;flex-direction:column;gap:6px;width:248px;';
 
     function makeDot(color) {
         var d = document.createElement('span');
@@ -472,7 +525,7 @@ public partial class ReaderPage : System.Windows.Controls.Page
         d.addEventListener('mousedown', function(ev){ ev.preventDefault(); ev.stopPropagation(); });
         d.addEventListener('click', function(ev){
             ev.preventDefault(); ev.stopPropagation();
-            createFromSelection(color, 'highlight');
+            createFromSelection(color, 'highlight', '');
         });
         return d;
     }
@@ -501,32 +554,234 @@ public partial class ReaderPage : System.Windows.Controls.Page
     }
 
     // ── 第一行：笔记、复制 ──
-    var noteBtn = makeAction('笔记', '笔记', function(){
-        // 笔记功能预留：当前仅占位，后续实现
+    var noteBtn = makeAction('笔记', '添加批注', function(){
+        showNotePanel();
     });
-    noteBtn.style.fontSize = '12px';
     row1.appendChild(noteBtn);
     row1.appendChild(makeSep());
     var copyBtn = makeAction('复制', '复制选中文本', function(){
         copySelection();
     });
-    copyBtn.style.fontSize = '12px';
     row1.appendChild(copyBtn);
 
     // ── 第二行：高亮色、下划线 ──
     HIGHLIGHT_COLORS.forEach(function(c){ row2.appendChild(makeDot(c)); });
     row2.appendChild(makeSep());
     var underlineBtn = makeAction('U', '下划线', function(){
-        createFromSelection(UNDERLINE_COLOR, 'underline');
+        createFromSelection(UNDERLINE_COLOR, 'underline', '');
     });
     underlineBtn.style.textDecoration = 'underline';
     underlineBtn.style.textDecorationThickness = '2px';
     underlineBtn.style.textUnderlineOffset = '2px';
     row2.appendChild(underlineBtn);
 
+    // ── 笔记输入面板：文本框 + 样式选择器 + 保存/取消 ──
+    var noteTextarea = document.createElement('textarea');
+    noteTextarea.placeholder = '写下你的批注…';
+    noteTextarea.style.cssText = 'width:100%;height:72px;resize:none;border-radius:6px;' +
+        'border:1px solid rgba(255,255,255,0.2);background:#1E1E1E;color:#E8E8EC;' +
+        'padding:6px 8px;font:12px/1.5 ""Microsoft YaHei"",sans-serif;outline:none;box-sizing:border-box;';
+    noteTextarea.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+    noteTextarea.addEventListener('keydown', function(ev){ ev.stopPropagation(); });
+    notePanel.appendChild(noteTextarea);
+
+    var styleRow = document.createElement('div');
+    styleRow.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:5px;flex-wrap:wrap;';
+    var selectedStyle = { color: HIGHLIGHT_COLORS[0], style: 'highlight' };
+    var savedNoteRange = null;   // 笔记面板显示时保存的选区 Range（textarea 聚焦会丢失原选区，保存后用于创建标注）
+
+    function makeStyleOption(color, style, label, isAnnotation) {
+        var opt = document.createElement('span');
+        opt.title = label;
+        opt.__color = color;
+        opt.__style = style;
+        if (isAnnotation) {
+            opt.style.cssText = 'display:inline-block;width:28px;height:22px;border-radius:4px;cursor:pointer;' +
+                'background:' + color + '22;border-left:3px solid ' + color + ';' +
+                'border-top:1px solid rgba(255,255,255,0.15);border-right:1px solid rgba(255,255,255,0.15);' +
+                'border-bottom:1px solid rgba(255,255,255,0.15);transition:transform .12s ease;box-sizing:border-box;';
+        } else if (style === 'underline') {
+            opt.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+                'min-width:30px;height:22px;border-radius:4px;cursor:pointer;color:#E8E8EC;' +
+                'font-weight:600;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px;' +
+                'border:1px solid rgba(255,255,255,0.15);transition:transform .12s ease;box-sizing:border-box;';
+            opt.textContent = 'U';
+        } else {
+            opt.style.cssText = 'display:inline-block;width:22px;height:22px;border-radius:50%;cursor:pointer;' +
+                'background:' + color + ';border:2px solid rgba(255,255,255,0.25);' +
+                'transition:transform .12s ease;box-sizing:border-box;';
+        }
+        opt.addEventListener('mouseenter', function(){ opt.style.transform = 'scale(1.12)'; });
+        opt.addEventListener('mouseleave', function(){ opt.style.transform = 'scale(1)'; });
+        opt.addEventListener('mousedown', function(ev){ ev.preventDefault(); ev.stopPropagation(); });
+        opt.addEventListener('click', function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            selectedStyle.color = color;
+            selectedStyle.style = style;
+            updateStyleSelection();
+        });
+        return opt;
+    }
+
+    function updateStyleSelection() {
+        var opts = styleRow.children;
+        for (var i = 0; i < opts.length; i++) {
+            var o = opts[i];
+            var isSelected = (o.__color === selectedStyle.color && o.__style === selectedStyle.style);
+            o.style.outline = isSelected ? '2px solid #60CDFF' : 'none';
+            o.style.outlineOffset = '1px';
+        }
+    }
+
+    HIGHLIGHT_COLORS.forEach(function(c){
+        styleRow.appendChild(makeStyleOption(c, 'highlight', '高亮', false));
+    });
+    styleRow.appendChild(makeStyleOption(UNDERLINE_COLOR, 'underline', '下划线', false));
+    styleRow.appendChild(makeStyleOption(ANNOTATION_COLOR, 'annotation', '批注', true));
+    notePanel.appendChild(styleRow);
+
+    var noteBtnRow = document.createElement('div');
+    noteBtnRow.style.cssText = 'display:flex;flex-direction:row;justify-content:flex-end;gap:6px;';
+    notePanel.appendChild(noteBtnRow);
+
+    // 编辑模式状态：点击已有批注标注时进入
+    var editMode = null;  // null=新建模式, {id, span} = 编辑模式
+
+    function renderNoteButtons() {
+        noteBtnRow.innerHTML = '';
+        if (editMode) {
+            // 编辑模式：删除、取消
+            noteBtnRow.appendChild(makeAction('删除', '删除此标注', function(){
+                if (confirm('删除此标注？')) {
+                    window.chrome.webview.postMessage('hl-delete|' + editMode.id);
+                    editMode = null;
+                    hideBar();
+                }
+            }));
+            noteBtnRow.appendChild(makeAction('取消', '取消编辑', function(){
+                editMode = null;
+                hideBar();
+            }));
+            noteBtnRow.appendChild(makeAction('保存', '保存修改', function(){
+                var comment = noteTextarea.value.trim();
+                window.chrome.webview.postMessage('hl-note-edit|' + JSON.stringify({
+                    id: editMode.id,
+                    comment: comment,
+                    color: selectedStyle.color,
+                    style: selectedStyle.style
+                }));
+                editMode = null;
+                hideBar();
+            }));
+        } else {
+            // 新建模式：取消、保存
+            noteBtnRow.appendChild(makeAction('取消', '取消', function(){ hideBar(); }));
+            noteBtnRow.appendChild(makeAction('保存', '保存批注', function(){
+                var comment = noteTextarea.value.trim();
+                if (!savedNoteRange) { hideBar(); return; }
+                var info = buildSelectionInfo(savedNoteRange, selectedStyle.color, selectedStyle.style);
+                if (info) {
+                    info.comment = comment || '';
+                    if (comment) {
+                        window.chrome.webview.postMessage('hl-note|' + JSON.stringify(info));
+                    } else {
+                        window.chrome.webview.postMessage('hl-create|' + JSON.stringify(info));
+                    }
+                }
+                savedNoteRange = null;
+                var sel = window.getSelection();
+                if (sel) sel.removeAllRanges();
+                hideBar();
+            }));
+        }
+    }
+    renderNoteButtons();
+
     bar.appendChild(row1);
     bar.appendChild(row2);
+    bar.appendChild(notePanel);
     document.body.appendChild(bar);
+
+    // ── 笔记面板显示/隐藏 ──
+    function showNotePanel() {
+        editMode = null;
+        // 保存当前选区：textarea 聚焦后原选区会丢失，保存后用于创建标注
+        var sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            savedNoteRange = sel.getRangeAt(0).cloneRange();
+        }
+        row1.style.display = 'none';
+        row2.style.display = 'none';
+        notePanel.style.display = 'flex';
+        noteTextarea.value = '';
+        selectedStyle.color = HIGHLIGHT_COLORS[0];
+        selectedStyle.style = 'highlight';
+        updateStyleSelection();
+        renderNoteButtons();
+        // 重新定位浮窗（面板比操作行更高更宽）
+        repositionBar();
+        setTimeout(function(){ noteTextarea.focus(); }, 0);
+    }
+
+    // 编辑已有批注标注：复用笔记面板，回填内容与样式，按钮切换为编辑模式
+    function showNotePanelForEdit(span, note) {
+        editMode = { id: note.id, span: span };
+        row1.style.display = 'none';
+        row2.style.display = 'none';
+        notePanel.style.display = 'flex';
+        noteTextarea.value = note.comment || '';
+        selectedStyle.color = note.color;
+        selectedStyle.style = note.style;
+        updateStyleSelection();
+        renderNoteButtons();
+        // 定位到被点击的标注 span 下方
+        var rect = span.getBoundingClientRect();
+        bar.style.display = 'flex';
+        bar.style.visibility = 'hidden';
+        var bw = bar.offsetWidth, bh = bar.offsetHeight;
+        bar.style.visibility = 'visible';
+        var gap = 8;
+        var left = rect.left;
+        var top = rect.bottom + gap;
+        if (top + bh > window.innerHeight - 4) top = rect.top - bh - gap;
+        if (top < 4) top = 4;
+        if (left + bw > window.innerWidth - 4) left = window.innerWidth - bw - 4;
+        if (left < 4) left = 4;
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        setTimeout(function(){
+            noteTextarea.focus();
+            window.chrome.webview.postMessage('hl-bar-show|');
+        }, 0);
+    }
+
+    function hideNotePanel() {
+        notePanel.style.display = 'none';
+        row1.style.display = 'flex';
+        row2.style.display = 'flex';
+    }
+
+    // 根据当前可见内容重新定位浮窗（选区最后一行右下角）
+    function repositionBar() {
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+        var rects = sel.getRangeAt(0).getClientRects();
+        if (rects.length === 0) return;
+        var rect = rects[rects.length - 1];
+        if (rect.width === 0 && rect.height === 0) return;
+        bar.style.visibility = 'hidden';
+        var bw = bar.offsetWidth, bh = bar.offsetHeight;
+        bar.style.visibility = 'visible';
+        var gap = 8;
+        var left = rect.right - bw;
+        var top = rect.bottom + gap;
+        if (top + bh > window.innerHeight - 4) top = rect.top - bh - gap;
+        if (top < 4) top = 4;
+        if (left < 4) left = 4;
+        if (left + bw > window.innerWidth - 4) left = window.innerWidth - bw - 4;
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+    }
 
     // ── 复制选中文本 ──
     function copySelection() {
@@ -535,7 +790,6 @@ public partial class ReaderPage : System.Windows.Controls.Page
         var text = sel.toString();
         if (!text) { hideBar(); return; }
         try {
-            // 优先用 Clipboard API
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(text).then(function(){
                     hideBar();
@@ -548,7 +802,6 @@ public partial class ReaderPage : System.Windows.Controls.Page
         }
     }
 
-    // 兜底复制：用临时 textarea + document.execCommand
     function fallbackCopy(text) {
         try {
             var ta = document.createElement('textarea');
@@ -563,20 +816,31 @@ public partial class ReaderPage : System.Windows.Controls.Page
         hideBar();
     }
 
-    // ── 由选区创建标注 ──
-    function createFromSelection(color, style) {
+    // ── 由选区创建标注（有 comment 走批注流程，无 comment 走普通高亮） ──
+    function createFromSelection(color, style, comment) {
         var sel = window.getSelection();
         if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBar(); return; }
         var range = sel.getRangeAt(0);
         var info = buildSelectionInfo(range, color, style);
         if (info) {
-            window.chrome.webview.postMessage('hl-create|' + JSON.stringify(info));
+            info.comment = comment || '';
+            if (comment) {
+                window.chrome.webview.postMessage('hl-note|' + JSON.stringify(info));
+            } else {
+                window.chrome.webview.postMessage('hl-create|' + JSON.stringify(info));
+            }
         }
         sel.removeAllRanges();
         hideBar();
     }
 
-    function hideBar() { bar.style.display = 'none'; window.chrome.webview.postMessage('hl-bar-hide|'); }
+    function hideBar() {
+        var wasVisible = (bar.style.display !== 'none');
+        bar.style.display = 'none';
+        editMode = null;
+        hideNotePanel();
+        if (wasVisible) window.chrome.webview.postMessage('hl-bar-hide|');
+    }
 
     function showBarForSelection() {
         var card = getCard();
@@ -586,44 +850,38 @@ public partial class ReaderPage : System.Windows.Controls.Page
         var range = sel.getRangeAt(0);
         if (!card.contains(range.commonAncestorContainer)) { hideBar(); return; }
 
-        // 取选区每一行的客户端矩形，最后一个即为选中结束所在行，
-        // 用它定位浮窗到“最后一个字的右下角”，避免跨多行时位置偏远。
         var rects = range.getClientRects();
         if (rects.length === 0) { hideBar(); return; }
         var rect = rects[rects.length - 1];
         if (rect.width === 0 && rect.height === 0) { hideBar(); return; }
 
-        // 先以不可见方式渲染以测量尺寸
+        // 每次显示浮窗都回到操作行模式
+        hideNotePanel();
         bar.style.display = 'flex';
         bar.style.visibility = 'hidden';
         var bw = bar.offsetWidth, bh = bar.offsetHeight;
         bar.style.visibility = 'visible';
 
-        // 定位到选中结束的右下角：右边缘对齐最后一行右端，紧贴其下方
         var gap = 8;
         var left = rect.right - bw;
         var top = rect.bottom + gap;
-        // 越界修正：下方放不下则上移到最后一行上方
         if (top + bh > window.innerHeight - 4) top = rect.top - bh - gap;
         if (top < 4) top = 4;
         if (left < 4) left = 4;
         if (left + bw > window.innerWidth - 4) left = window.innerWidth - bw - 4;
         bar.style.left = left + 'px';
         bar.style.top = top + 'px';
-        // 通知宿主禁用 WPF 工具栏/面板交互
-        window.chrome.webview.postMessage('hl-bar-show|');
+        setTimeout(function(){ window.chrome.webview.postMessage('hl-bar-show|'); }, 0);
     }
 
-    // 仅在选区动作结束时（鼠标抬起 / 按键抬起）弹出浮窗，
-    // 避免选择过程中浮窗跟随选区实时移动。
-    document.addEventListener('mouseup', function() {
+    document.addEventListener('mouseup', function(ev) {
+        // 点击发生在浮窗内部（如点“笔记”按钮）：不触发重新定位，避免覆盖面板
+        if (bar.contains(ev.target)) return;
         var sel = window.getSelection();
         if (!sel || sel.isCollapsed) { hideBar(); return; }
-        // 延迟一帧，确保 getBoundingClientRect 反映最终选区位置
         setTimeout(showBarForSelection, 0);
     });
 
-    // 支持键盘选择（Shift + 方向键）结束后也能弹出
     document.addEventListener('keyup', function(ev) {
         if (ev.shiftKey || ev.key === 'Shift' ||
             ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' ||
@@ -635,15 +893,13 @@ public partial class ReaderPage : System.Windows.Controls.Page
     });
 
     // ── 浮窗显示期间的全局交互锁 ──
-    // 仅允许两种操作：点击浮窗内按钮、点击浮窗外取消浮窗；
-    // 其余一切交互（拖动选区、键盘改选区、滚动、右键菜单、双击选词等）一律屏蔽。
-    function isBarVisible() { return bar.style.display !== 'none'; }
+    function isOverlayVisible() {
+        return bar.style.display !== 'none';
+    }
 
     document.addEventListener('mousedown', function(ev) {
-        // 点击浮窗内部：放行（按钮可正常响应）
         if (bar.contains(ev.target)) return;
-        // 浮窗显示时点击外部：取消浮窗并清除选区，同时阻止开始任何新选区拖动
-        if (isBarVisible()) {
+        if (isOverlayVisible()) {
             ev.preventDefault();
             ev.stopPropagation();
             var sel = window.getSelection();
@@ -652,43 +908,38 @@ public partial class ReaderPage : System.Windows.Controls.Page
         }
     }, true);
 
-    // 屏蔽键盘：防止方向键/Shift 修改选区、Space/PageDown 滚动等
     document.addEventListener('keydown', function(ev) {
-        if (isBarVisible() && !bar.contains(ev.target)) {
+        if (isOverlayVisible() && !bar.contains(ev.target)) {
             ev.preventDefault();
             ev.stopPropagation();
         }
     }, true);
 
-    // 屏蔽滚轮：浮窗显示期间禁止滚动页面
     document.addEventListener('wheel', function(ev) {
-        if (isBarVisible()) {
+        if (isOverlayVisible()) {
             ev.preventDefault();
             ev.stopPropagation();
         }
     }, { capture: true, passive: false });
 
-    // 屏蔽右键菜单
     document.addEventListener('contextmenu', function(ev) {
-        if (isBarVisible()) ev.preventDefault();
+        if (isOverlayVisible()) ev.preventDefault();
     }, true);
 
-    // 屏蔽双击选词
     document.addEventListener('dblclick', function(ev) {
-        if (isBarVisible() && !bar.contains(ev.target)) {
+        if (isOverlayVisible() && !bar.contains(ev.target)) {
             ev.preventDefault();
             ev.stopPropagation();
         }
     }, true);
 
-    // 屏蔽新的选区拖动与文本拖拽
     document.addEventListener('selectstart', function(ev) {
-        if (isBarVisible() && !bar.contains(ev.target)) {
+        if (isOverlayVisible() && !bar.contains(ev.target)) {
             ev.preventDefault();
         }
     }, true);
     document.addEventListener('dragstart', function(ev) {
-        if (isBarVisible()) ev.preventDefault();
+        if (isOverlayVisible()) ev.preventDefault();
     }, true);
 
     function getGlobalOffset(node, offset) {
@@ -776,22 +1027,45 @@ public partial class ReaderPage : System.Windows.Controls.Page
             if (actual !== expect) return false;
             var textNodes = getTextNodesInRange(range);
             if (textNodes.length === 0) return false;
+            var comment = n.comment || '';
             textNodes.forEach(function(tn) {
                 var sOff = (tn === range.startContainer) ? range.startOffset : 0;
                 var eOff = (tn === range.endContainer) ? range.endOffset : tn.length;
                 if (sOff >= eOff) return;
                 var span = document.createElement('span');
-                span.className = 'hl-note';
+                // 带批注的标注追加 hl-has-note 类，叠加红色波浪线标识“这里有笔记”
+                span.className = 'hl-note' + (comment ? ' hl-has-note' : '');
                 span.setAttribute('data-note-id', n.id);
+                span.setAttribute('data-comment', comment);
                 if (n.style === 'underline') {
                     span.style.cssText = 'border-bottom:2px solid ' + n.color + ';cursor:pointer;';
+                } else if (n.style === 'annotation') {
+                    span.style.cssText = 'background:' + n.color + '22;border-left:3px solid ' + n.color +
+                        ';border-radius:2px;cursor:pointer;padding-left:2px;';
                 } else {
                     span.style.cssText = 'background:' + n.color + ';border-radius:2px;cursor:pointer;';
                 }
                 span.addEventListener('click', function(ev) {
                     ev.stopPropagation();
-                    if (confirm('Delete this highlight?')) {
-                        window.chrome.webview.postMessage('hl-delete|' + n.id);
+                    var currentComment = this.getAttribute('data-comment') || '';
+                    // 再次点击同一标注的笔记面板则关闭
+                    if (editMode && editMode.id === n.id) {
+                        hideBar();
+                        return;
+                    }
+                    // 有批注内容：复用笔记面板进入编辑模式（保留标注，绝不删除）
+                    if (currentComment) {
+                        showNotePanelForEdit(this, {
+                            id: n.id,
+                            comment: currentComment,
+                            color: n.color,
+                            style: n.style
+                        });
+                    } else {
+                        // 无批注的纯高亮：确认后删除
+                        if (confirm('Delete this highlight?')) {
+                            window.chrome.webview.postMessage('hl-delete|' + n.id);
+                        }
                     }
                 });
                 var innerRange = document.createRange();
@@ -805,6 +1079,14 @@ public partial class ReaderPage : System.Windows.Controls.Page
 
     window.__epubRestoreHighlights = function(notesJson) {
         try {
+            // 渲染前先清除所有现有标注 span，避免重复叠加（编辑批注后重渲染时使用）
+            var existing = document.querySelectorAll('.hl-note');
+            existing.forEach(function(span) {
+                var parent = span.parentNode;
+                while (span.firstChild) parent.insertBefore(span.firstChild, span);
+                parent.removeChild(span);
+                parent.normalize();
+            });
             var notes = JSON.parse(notesJson);
             notes.forEach(function(n) { window.__epubRenderHighlight(n); });
         } catch(e) {}
@@ -818,6 +1100,34 @@ public partial class ReaderPage : System.Windows.Controls.Page
             parent.removeChild(span);
             parent.normalize();
         });
+    };
+
+    // 更新批注：移除旧 span 后用新 color/style/comment 重新渲染
+    window.__epubUpdateAnnotationComment = function(payload) {
+        try {
+            var id = payload.id;
+            var comment = payload.comment || '';
+            var color = payload.color || '';
+            var style = payload.style || '';
+            // 先移除旧 span
+            var spans = document.querySelectorAll('.hl-note[data-note-id=""' + id + '""]');
+            spans.forEach(function(span) {
+                var parent = span.parentNode;
+                while (span.firstChild) parent.insertBefore(span.firstChild, span);
+                parent.removeChild(span);
+                parent.normalize();
+            });
+            // 用新属性重新渲染（复用 __epubRenderHighlight，需查回原 Note 的 offset/text）
+            // 通过遍历 DOM 上的标注无法拿到 offset，因此改为直接就地重建 span：
+            // 此处依赖宿主传入完整 note 信息；若仅有 id+comment 则只更新文本属性
+            if (color && style) {
+                // 重新查找该 note 的渲染数据（从已渲染节点已丢失，故走重渲染需要 offset，
+                // 但宿主未传 offset，这里改为：仅当传入 color/style 时就地包裹新 span）
+                // 实际重渲染由 __epubRenderHighlight 在 RestoreHighlights 时完成，
+                // 这里改为通知宿主重新拉取本章笔记并重渲染
+                window.chrome.webview.postMessage('hl-refresh|' + id);
+            }
+        } catch(e) {}
     };
 })();
 ";
@@ -869,6 +1179,19 @@ public partial class ReaderPage : System.Windows.Controls.Page
         {
             var escaped = noteId.Replace("'", "\\'");
             var script = $"window.__epubRemoveHighlight && window.__epubRemoveHighlight('{escaped}');";
+            await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch { }
+    }
+
+    /// <summary>批注内容更新后同步 DOM 的 data-comment 与气泡文本</summary>
+    private async void OnAnnotationUpdated(object? sender, string payloadJson)
+    {
+        if (WebView.CoreWebView2 == null || string.IsNullOrEmpty(payloadJson)) return;
+        try
+        {
+            // payloadJson 是合法 JSON {id, comment, color, style}，作为 JS 对象字面量嵌入
+            var script = $"window.__epubUpdateAnnotationComment && window.__epubUpdateAnnotationComment({payloadJson});";
             await WebView.CoreWebView2.ExecuteScriptAsync(script);
         }
         catch { }

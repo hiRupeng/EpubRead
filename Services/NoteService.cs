@@ -133,6 +133,23 @@ public class NoteService
     }
 
     /// <summary>
+    /// 更新指定笔记的批注内容与标注样式（编辑批注时调用）
+    /// </summary>
+    public void UpdateNote(string noteId, string comment, string color, string style)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Notes SET Comment = @comment, Color = @color, Style = @style WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@comment", comment);
+        cmd.Parameters.AddWithValue("@color", color);
+        cmd.Parameters.AddWithValue("@style", style);
+        cmd.Parameters.AddWithValue("@id", noteId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
     /// 删除一条高亮笔记
     /// </summary>
     public void DeleteNote(string noteId)
