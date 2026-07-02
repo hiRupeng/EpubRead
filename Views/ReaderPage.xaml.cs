@@ -541,7 +541,7 @@ public partial class ReaderPage : System.Windows.Controls.Page
         b.textContent = label;
         b.title = title;
         b.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
-            'min-width:30px;height:26px;padding:0 8px;border-radius:6px;color:#E8E8EC;' +
+            'min-width:30px;height:26px;line-height:26px;padding:0 8px;border-radius:6px;color:#E8E8EC;' +
             'cursor:pointer;font-weight:600;transition:background .12s ease;';
         b.addEventListener('mouseenter', function(){ b.style.background = 'rgba(255,255,255,0.12)'; });
         b.addEventListener('mouseleave', function(){ b.style.background = 'transparent'; });
@@ -553,7 +553,7 @@ public partial class ReaderPage : System.Windows.Controls.Page
         return b;
     }
 
-    // ── 第一行：笔记、复制 ──
+    // ── 第一行：笔记、复制、删除 ──
     var noteBtn = makeAction('笔记', '添加批注', function(){
         showNotePanel();
     });
@@ -563,6 +563,19 @@ public partial class ReaderPage : System.Windows.Controls.Page
         copySelection();
     });
     row1.appendChild(copyBtn);
+    row1.appendChild(makeSep());
+    // ── 删除按钮（仅点击已有无批注高亮时显示） ──
+    var deleteHighlightBtn = makeAction('删除', '删除此高亮', function(){
+        var idToDelete = currentHighlightId;
+        currentHighlightId = null;
+        hideBar();
+        if (idToDelete) {
+            window.chrome.webview.postMessage('hl-delete|' + idToDelete);
+        }
+    });
+    deleteHighlightBtn.style.color = '#FF6B6B';
+    deleteHighlightBtn.style.display = 'none';
+    row1.appendChild(deleteHighlightBtn);
 
     // ── 第二行：高亮色、下划线 ──
     HIGHLIGHT_COLORS.forEach(function(c){ row2.appendChild(makeDot(c)); });
@@ -574,6 +587,9 @@ public partial class ReaderPage : System.Windows.Controls.Page
     underlineBtn.style.textDecorationThickness = '2px';
     underlineBtn.style.textUnderlineOffset = '2px';
     row2.appendChild(underlineBtn);
+
+    // 当前点击的已有高亮 id（仅点击已有无批注高亮弹工具栏时设置）
+    var currentHighlightId = null;
 
     // ── 笔记输入面板：文本框 + 样式选择器 + 保存/取消 ──
     var noteTextarea = document.createElement('textarea');
@@ -652,11 +668,12 @@ public partial class ReaderPage : System.Windows.Controls.Page
         if (editMode) {
             // 编辑模式：删除、取消
             noteBtnRow.appendChild(makeAction('删除', '删除此标注', function(){
-                if (confirm('删除此标注？')) {
-                    window.chrome.webview.postMessage('hl-delete|' + editMode.id);
-                    editMode = null;
-                    hideBar();
-                }
+                var idToDelete = editMode.id;
+                showConfirmDialog('删除此标注？', function(){
+                    window.chrome.webview.postMessage('hl-delete|' + idToDelete);
+                });
+                editMode = null;
+                hideBar();
             }));
             noteBtnRow.appendChild(makeAction('取消', '取消编辑', function(){
                 editMode = null;
@@ -705,6 +722,8 @@ public partial class ReaderPage : System.Windows.Controls.Page
     // ── 笔记面板显示/隐藏 ──
     function showNotePanel() {
         editMode = null;
+        deleteHighlightBtn.style.display = 'none';
+        currentHighlightId = null;
         // 保存当前选区：textarea 聚焦后原选区会丢失，保存后用于创建标注
         var sel = window.getSelection();
         if (sel && sel.rangeCount > 0) {
@@ -726,6 +745,8 @@ public partial class ReaderPage : System.Windows.Controls.Page
     // 编辑已有批注标注：复用笔记面板，回填内容与样式，按钮切换为编辑模式
     function showNotePanelForEdit(span, note) {
         editMode = { id: note.id, span: span };
+        deleteHighlightBtn.style.display = 'none';
+        currentHighlightId = null;
         row1.style.display = 'none';
         row2.style.display = 'none';
         notePanel.style.display = 'flex';
@@ -838,8 +859,83 @@ public partial class ReaderPage : System.Windows.Controls.Page
         var wasVisible = (bar.style.display !== 'none');
         bar.style.display = 'none';
         editMode = null;
+        deleteHighlightBtn.style.display = 'none';
+        currentHighlightId = null;
         hideNotePanel();
         if (wasVisible) window.chrome.webview.postMessage('hl-bar-hide|');
+    }
+
+    // ── 自定义居中确认弹窗（替换原生 confirm，样式与浮窗统一） ──
+    var confirmOverlay = null;
+    function showConfirmDialog(message, onConfirm) {
+        if (confirmOverlay) { document.body.removeChild(confirmOverlay); confirmOverlay = null; }
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:100000;' +
+            'display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);';
+        var dlg = document.createElement('div');
+        dlg.style.cssText = 'background:#2B2B2B;border-radius:10px;padding:18px 20px;' +
+            'box-shadow:0 8px 32px rgba(0,0,0,0.5);min-width:240px;max-width:320px;' +
+            'font:13px/1.5 ""Microsoft YaHei"",sans-serif;color:#E8E8EC;text-align:center;';
+        var msg = document.createElement('div');
+        msg.textContent = message;
+        msg.style.marginBottom = '16px';
+        dlg.appendChild(msg);
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:center;gap:10px;';
+        var cancelBtnEl = document.createElement('span');
+        cancelBtnEl.textContent = '取消';
+        cancelBtnEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+            'min-width:64px;height:30px;padding:0 12px;border-radius:6px;cursor:pointer;' +
+            'background:rgba(255,255,255,0.1);color:#E8E8EC;font-weight:600;transition:background .12s ease;';
+        cancelBtnEl.addEventListener('mouseenter', function(){ cancelBtnEl.style.background = 'rgba(255,255,255,0.18)'; });
+        cancelBtnEl.addEventListener('mouseleave', function(){ cancelBtnEl.style.background = 'rgba(255,255,255,0.1)'; });
+        cancelBtnEl.addEventListener('click', function(){
+            document.body.removeChild(ov); confirmOverlay = null;
+        });
+        var okBtnEl = document.createElement('span');
+        okBtnEl.textContent = '确认';
+        okBtnEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+            'min-width:64px;height:30px;padding:0 12px;border-radius:6px;cursor:pointer;' +
+            'background:#E53935;color:#FFFFFF;font-weight:600;transition:background .12s ease;';
+        okBtnEl.addEventListener('mouseenter', function(){ okBtnEl.style.background = '#EF5350'; });
+        okBtnEl.addEventListener('mouseleave', function(){ okBtnEl.style.background = '#E53935'; });
+        okBtnEl.addEventListener('click', function(){
+            document.body.removeChild(ov); confirmOverlay = null;
+            if (onConfirm) onConfirm();
+        });
+        // 遮罩拦截交互，避免穿透到阅读区
+        ov.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+        ov.addEventListener('wheel', function(ev){ ev.preventDefault(); ev.stopPropagation(); }, { passive: false });
+        ov.addEventListener('contextmenu', function(ev){ ev.preventDefault(); });
+        btnRow.appendChild(cancelBtnEl);
+        btnRow.appendChild(okBtnEl);
+        dlg.appendChild(btnRow);
+        ov.appendChild(dlg);
+        document.body.appendChild(ov);
+        confirmOverlay = ov;
+    }
+
+    // 点击已有无批注高亮：显示工具栏（带删除按钮），定位到 span 下方
+    function showBarForExistingHighlight(span, noteId) {
+        currentHighlightId = noteId;
+        editMode = null;
+        hideNotePanel();
+        deleteHighlightBtn.style.display = '';
+        bar.style.display = 'flex';
+        bar.style.visibility = 'hidden';
+        var bw = bar.offsetWidth, bh = bar.offsetHeight;
+        bar.style.visibility = 'visible';
+        var rect = span.getBoundingClientRect();
+        var gap = 8;
+        var left = rect.left;
+        var top = rect.bottom + gap;
+        if (top + bh > window.innerHeight - 4) top = rect.top - bh - gap;
+        if (top < 4) top = 4;
+        if (left + bw > window.innerWidth - 4) left = window.innerWidth - bw - 4;
+        if (left < 4) left = 4;
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        setTimeout(function(){ window.chrome.webview.postMessage('hl-bar-show|'); }, 0);
     }
 
     function showBarForSelection() {
@@ -855,8 +951,10 @@ public partial class ReaderPage : System.Windows.Controls.Page
         var rect = rects[rects.length - 1];
         if (rect.width === 0 && rect.height === 0) { hideBar(); return; }
 
-        // 每次显示浮窗都回到操作行模式
+        // 每次显示浮窗都回到操作行模式（隐藏已有高亮的删除按钮）
         hideNotePanel();
+        deleteHighlightBtn.style.display = 'none';
+        currentHighlightId = null;
         bar.style.display = 'flex';
         bar.style.visibility = 'hidden';
         var bw = bar.offsetWidth, bh = bar.offsetHeight;
@@ -1062,10 +1160,8 @@ public partial class ReaderPage : System.Windows.Controls.Page
                             style: n.style
                         });
                     } else {
-                        // 无批注的纯高亮：确认后删除
-                        if (confirm('Delete this highlight?')) {
-                            window.chrome.webview.postMessage('hl-delete|' + n.id);
-                        }
+                        // 无批注的纯高亮：弹出工具栏（含删除按钮），可改色/下划线或直接删除
+                        showBarForExistingHighlight(this, n.id);
                     }
                 });
                 var innerRange = document.createRange();

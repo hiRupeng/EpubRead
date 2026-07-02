@@ -1,0 +1,473 @@
+{
+    "project": {
+        "name": "EpubRead",
+        "description": "基于 WPF (.NET 10) 的 EPUB 电子书阅读器桌面应用",
+        "framework": {
+            "runtime": "net10.0-windows",
+            "ui": "WPF",
+            "ui_library": "Microsoft.Web.WebView2 (1.0.2903.40)",
+            "mvvm": "CommunityToolkit.Mvvm (8.4.0)",
+            "database": "Microsoft.Data.Sqlite (10.0.0-preview)",
+            "output_type": "WinExe"
+        }
+    },
+    "file_tree": [
+        {
+            "path": "App.xaml",
+            "role": "应用全局资源与转换器注册"
+        },
+        {
+            "path": "App.xaml.cs",
+            "role": "应用入口：初始化数据目录、SQLite 三张表、服务、主窗口"
+        },
+        {
+            "path": "AssemblyInfo.cs",
+            "role": "WPF ThemeInfo 程序集特性"
+        },
+        {
+            "path": "MainWindow.xaml",
+            "role": "主窗口（仅一个 Frame 用于页面导航）"
+        },
+        {
+            "path": "MainWindow.xaml.cs",
+            "role": "窗口逻辑：导航到书架、打开书籍、进度持久化"
+        },
+        {
+            "path": "Converters/CoverPathConverter.cs",
+            "role": "封面路径→ImageSource（含占位图回退）、NullToVisibility、ProgressToVisibility"
+        },
+        {
+            "path": "Converters/ReaderConverters.cs",
+            "role": "LevelToMargin、LevelToIcon、EnumEquals、ThemeEquals、PercentToWidth"
+        },
+        {
+            "path": "Models/Book.cs",
+            "role": "书架书籍实体"
+        },
+        {
+            "path": "Models/Chapter.cs",
+            "role": "章节实体（含层级树结构、锚点、IsSpineRoot）"
+        },
+        {
+            "path": "Models/EpubBook.cs",
+            "role": "EPUB 解析结果（元数据+封面+双章节列表+spine+basePath）"
+        },
+        {
+            "path": "Models/Note.cs",
+            "role": "高亮笔记实体（全局字符偏移定位）"
+        },
+        {
+            "path": "Models/ReaderUITheme.cs",
+            "role": "阅读器界面主题配色 record（含 Day/Night/EyeCare 三套完整配色）"
+        },
+        {
+            "path": "Models/ReadingSettings.cs",
+            "role": "阅读设置实体 + ThemeType/FontFamilyOption/LineHeightOption/PageWidthOption 枚举"
+        },
+        {
+            "path": "Services/BookshelfService.cs",
+            "role": "书架 CRUD（SQLite Books 表 + 封面文件清理 + 列迁移）"
+        },
+        {
+            "path": "Services/EpubParser.cs",
+            "role": "EPUB 解析引擎（ZIP + XML：container→OPF→NCX/NAV→spine→封面）"
+        },
+        {
+            "path": "Services/NoteService.cs",
+            "role": "高亮笔记 CRUD（SQLite Notes 表 + 旧表自动重建 + 渐近式列迁移）"
+        },
+        {
+            "path": "Services/ReadingSettingsService.cs",
+            "role": "阅读设置持久化（SQLite 单行表 + 列迁移）"
+        },
+        {
+            "path": "ViewModels/BookshelfViewModel.cs",
+            "role": "书架页 ViewModel"
+        },
+        {
+            "path": "ViewModels/ReaderViewModel.cs",
+            "role": "阅读器页 ViewModel（约1000行，含导航/设置/CSS生成/高亮笔记逻辑）"
+        },
+        {
+            "path": "Views/BookshelfPage.xaml",
+            "role": "书架页面 UI（搜索框+导入按钮+网格卡片+拖拽覆盖层）"
+        },
+        {
+            "path": "Views/BookshelfPage.xaml.cs",
+            "role": "拖拽导入事件处理（文件类型验证+异步调用ImportFiles）"
+        },
+        {
+            "path": "Views/ReaderPage.xaml",
+            "role": "阅读器页面 UI（WebView2 + 工具栏 + 目录树 + 设置面板）"
+        },
+        {
+            "path": "Views/ReaderPage.xaml.cs",
+            "role": "WebView2 交互核心（约1200行：导航拦截/JS注入/高亮渲染/键盘快捷键）"
+        }
+    ],
+    "data_models": {
+        "Book": {
+            "purpose": "书架上的书籍记录",
+            "table": "Books",
+            "properties": {
+                "Id": "string (GUID) — 主键",
+                "Title": "string",
+                "Author": "string",
+                "FilePath": "string — 原始 EPUB 文件路径",
+                "CoverPath": "string? — 封面缓存路径",
+                "ImportDate": "DateTime",
+                "LastReadChapterIndex": "int = -1",
+                "TotalChapters": "int",
+                "ReadProgressPercent": "double (计算属性 — 自动计算百分比)"
+            }
+        },
+        "Chapter": {
+            "purpose": "章节实体（支持层级树和扁平双模式）",
+            "properties": {
+                "Title": "string",
+                "Href": "string — 相对于 OPF 目录的路径",
+                "Anchor": "string? — 锚点标识符",
+                "Content": "string? — HTML 内容（按需加载）",
+                "Order": "int — 展平阅读顺序索引",
+                "Level": "int — 层级深度（0=卷, 1=章, 2=节...）",
+                "IsSpineRoot": "bool — 是否为新 HTML 文件起始",
+                "Children": "List<Chapter> — 子章节列表"
+            }
+        },
+        "EpubBook": {
+            "purpose": "EPUB 解析结果",
+            "properties": {
+                "Title": "string",
+                "Author": "string",
+                "CoverImage": "byte[]?",
+                "Chapters": "List<Chapter> — 层级树（目录面板展示用）",
+                "FlatChapters": "List<Chapter> — 展平列表（导航用）",
+                "SpineFiles": "List<string> — spine 文件列表",
+                "BasePath": "string — OPF 目录相对路径"
+            }
+        },
+        "Note": {
+            "purpose": "高亮笔记（全局字符偏移定位，不依赖 DOM 路径）",
+            "table": "Notes",
+            "properties": {
+                "Id": "string (GUID) — 主键",
+                "BookId": "string",
+                "ChapterHref": "string",
+                "StartOffset": "int — 全局字符偏移起点",
+                "EndOffset": "int — 全局字符偏移终点",
+                "SelectedText": "string — 选中原文（用于校验）",
+                "Color": "string — CSS 颜色值",
+                "Style": "string — highlight/underline/annotation",
+                "Comment": "string — 批注内容",
+                "CreatedAt": "DateTime"
+            }
+        },
+        "ReadingSettings": {
+            "purpose": "全局阅读偏好",
+            "table": "ReadingSettings（单行表，Id='default'）",
+            "properties": {
+                "Theme": "ThemeType (Day/Night/EyeCare)",
+                "FontSize": "int (14-28px)",
+                "FontFamily": "FontFamilyOption (Serif/SansSerif/Monospace)",
+                "LineHeight": "LineHeightOption (Compact=1.4/Normal=1.85/Loose=2.2)",
+                "PageWidth": "PageWidthOption (Narrow=680/Medium=820/Wide=960)"
+            }
+        },
+        "ReaderUITheme": {
+            "purpose": "界面主题配色（record 类型）",
+            "method": "Builder: ReaderUITheme.Build(ThemeType theme)",
+            "color_count": 18,
+            "key_colors": [
+                "PageBackground",
+                "ReadingBackground",
+                "ToolbarBackground",
+                "PanelBackground",
+                "PanelDeepBackground",
+                "DividerColor",
+                "PrimaryText",
+                "SecondaryText",
+                "TertiaryText",
+                "AccentColor",
+                "AccentLightColor",
+                "HoverBackground",
+                "PressedBackground",
+                "OptionBackground",
+                "OptionHoverBackground",
+                "ScrollBarThumb"
+            ]
+        }
+    },
+    "services": [
+        {
+            "name": "BookshelfService",
+            "purpose": "书架数据持久化",
+            "database_table": "Books (Id TEXT PK, Title, Author, FilePath, CoverPath, ImportDate, LastReadChapterIndex, TotalChapters)",
+            "key_methods": [
+                "InitializeDatabase() — 建表 + 列迁移",
+                "GetAllBooks() — 按导入时间倒序",
+                "AddBook(Book)",
+                "RemoveBook(bookId, coversDir) — 数据库+封面文件双清理",
+                "UpdateBookProgress(bookId, chapterIndex, totalChapters)"
+            ]
+        },
+        {
+            "name": "EpubParser",
+            "purpose": "EPUB 文件解析引擎",
+            "parse_flow": "ZIP → container.xml → OPF路径 → 基础路径 → OPF解析(元数据/manifest/spine/封面) → 目录解析(NCX优先→NAV→spine fallback) → 展平章节",
+            "key_methods": [
+                "Parse(epubFilePath, coverOutputStream?) → EpubBook — 完整解析",
+                "LoadChapterContent(filePath, basePath, href) — 单文件加载",
+                "LoadMultiFileRawContent(filePath, basePath, hrefs) — 多文件加载（跨spine章节）",
+                "LoadResource(filePath, resourcePath) — 读取图片/CSS/字体等资源",
+                "FlattenChapters(tree) — 公开辅助：层级树展平",
+                "ResolveHref(href, basePath, flatChapters) — 公开辅助：href查找章节"
+            ],
+            "directory_parsing": "NCX (EPUB 2) → HTML NAV (EPUB 3) → spine fallback，均保留层级结构",
+            "robust_path_resolution": "FindEntry 实施 5 级候选路径 + 大小写不敏感兜底，解决制作工具导致的路径不一致问题"
+        },
+        {
+            "name": "NoteService",
+            "purpose": "高亮笔记持久化",
+            "database_table": "Notes (Id TEXT PK, BookId, ChapterHref, StartOffset, EndOffset, SelectedText, Color, Style, Comment, CreatedAt)",
+            "index": "IX_Notes_Book_Chapter (BookId, ChapterHref)",
+            "migration": "检测旧版 StartSelector 列（CSS路径定位），自动删表重建；EnsureColumn 渐进式扩展",
+            "key_methods": [
+                "InitializeTable()",
+                "GetNotes(bookId, chapterHref) — 按书+章查询，按偏移排序",
+                "SaveNote(Note)",
+                "UpdateNote(noteId, comment, color, style)",
+                "DeleteNote(noteId)",
+                "DeleteNotesByBook(bookId)"
+            ]
+        },
+        {
+            "name": "ReadingSettingsService",
+            "purpose": "阅读设置持久化",
+            "database_table": "ReadingSettings (Id TEXT PK DEFAULT 'default', Theme INT, FontSize INT, FontFamily INT, LineHeight INT, PageWidth INT)",
+            "migration": "EnsureColumn 渐进式列迁移",
+            "key_methods": [
+                "InitializeTable() — 建表 + 插入默认行",
+                "LoadSettings() → ReadingSettings",
+                "SaveSettings(ReadingSettings)"
+            ]
+        }
+    ],
+    "viewmodels": [
+        {
+            "name": "BookshelfViewModel",
+            "data": {
+                "ObservableCollection<Book> Books": "全部书籍集合",
+                "ICollectionView BooksView": "过滤视图（绑定UI）",
+                "string SearchText": "搜索文本（实时过滤书名/作者）"
+            },
+            "commands": [
+                "ImportBookCommand — 文件对话框导入",
+                "ImportFolderCommand — 文件夹递归导入",
+                "DeleteBookCommand — 删除确认+清理",
+                "OpenBookCommand — 触发 OpenBookRequested 事件"
+            ],
+            "key_events": [
+                "OpenBookRequested<Book> — 由 MainWindow 订阅以切换到阅读器页面"
+            ],
+            "public_methods": [
+                "ImportFiles(filePaths) — 批量导入（共享给拖拽+菜单）"
+            ]
+        },
+        {
+            "name": "ReaderViewModel",
+            "purpose": "阅读器核心逻辑（约1000行）",
+            "data_properties": {
+                "章节数据": [
+                    "ObservableCollection<Chapter> TocChapters（层级树）",
+                    "ObservableCollection<Chapter> FlatChapters（展平列表）"
+                ],
+                "状态": [
+                    "CurrentChapter",
+                    "BookTitle",
+                    "IsTocOpen",
+                    "IsSettingsOpen",
+                    "IsToolbarEnabled",
+                    "HasPrev",
+                    "HasNext"
+                ],
+                "进度": [
+                    "TopProgress (0-1)",
+                    "ProgressPercentText",
+                    "ProgressText (如 \"3/12\")"
+                ],
+                "阅读设置": [
+                    "SelectedTheme",
+                    "FontSize",
+                    "SelectedFontFamily",
+                    "SelectedLineHeight",
+                    "SelectedPageWidth",
+                    "UiTheme（自动计算）"
+                ]
+            },
+            "commands": [
+                "ToggleTocCommand / ToggleSettingsCommand — 面板互斥切换",
+                "NavigateToChapterCommand — 章节导航（含多文件拼接）",
+                "NavigatePrevCommand / NavigateNextCommand — 按 spine 文件跳转",
+                "GoBackCommand — 返回书架",
+                "SetThemeCommand / IncreaseFontSizeCommand / DecreaseFontSizeCommand",
+                "SetFontFamilyCommand / SetLineHeightCommand / SetPageWidthCommand"
+            ],
+            "events": [
+                "ContentRequested<string> — 通知 Page 渲染 HTML",
+                "ScrollToAnchorRequested<string?> — 滚动到锚点",
+                "GoBackRequested — 返回书架",
+                "ProgressChanged<(int chapterIndex, int totalChapters)> — 持久化进度",
+                "StyleInjectionRequested<string> — 动态 CSS 注入 JS",
+                "HighlightsRestoreRequested<string> / HighlightCreated<string> / HighlightDeleted<string> / AnnotationUpdated<string>"
+            ],
+            "key_methods": [
+                "LoadBook(book) — 加载书籍（先读设置、解析、恢复位置）",
+                "NavigateToChapter(chapter) — 加载内容+渲染+恢复高亮",
+                "NavigateToHref(href) — 超链接导航（锚点+相对路径解析+跨文件拼接）",
+                "CreateHighlight(selectionJson) / CreateAnnotation(payloadJson) — 创建高亮/批注",
+                "UpdateAnnotation(payloadJson) — 编辑批注",
+                "DeleteHighlight(noteId) — 删除高亮",
+                "ComputeFullContentFiles(chapter) — 计算多文件加载范围",
+                "GenerateReadingStyleFromBody(bodyContent, fileHref) — 生成完整阅读 HTML",
+                "GenerateStyleScript() — 动态 CSS JS 脚本",
+                "ExtractBodyContent(html) — 提取 <body> 内部内容",
+                "LoadResource(resourcePath) — 供 Page 的 WebResourceRequested 使用"
+            ]
+        }
+    ],
+    "views": [
+        {
+            "name": "MainWindow",
+            "layout": "Frame（页面导航容器）",
+            "logic": [
+                "NavigateToBookshelf() — 创建 BookshelfViewModel + BookshelfPage",
+                "OnOpenBookRequested — 创建 ReaderViewModel + ReaderPage + 订阅进度事件"
+            ]
+        },
+        {
+            "name": "BookshelfPage",
+            "ui_sections": [
+                "顶部导航栏 — 标题 + 搜索框 + 导入文件夹按钮 + 导入书籍按钮",
+                "书架网格 — WrapPanel + ItemsControl + 书籍卡片",
+                "空状态提示 — 图标+文字",
+                "拖拽覆盖层 — DragOverlay 脉冲动画提示"
+            ],
+            "event_handlers": [
+                "OnDragEnter/Leave/Drop — 验证 .epub 文件类型，异步批量导入"
+            ],
+            "styles": [
+                "ImportButtonStyle（蓝色Fluent按钮）",
+                "CoverGlossBrush（封面高光渐变）",
+                "ProgressGradientBrush（进度条渐变）",
+                "ModernScrollBarThumb（细圆角滚动条）",
+                "CardDeleteButtonStyle（悬浮红色删除按钮）",
+                "卡片动画（悬停放大+上移 Storyboard）"
+            ]
+        },
+        {
+            "name": "ReaderPage",
+            "layout": {
+                "rows": "顶栏(56px) | 进度条(3px) | *（阅读区+右侧面板）",
+                "columns": "*（阅读区） | 280/300px（面板）"
+            },
+            "ui_sections": [
+                "顶栏 — 返回按钮 + 书名 + 上/下章 + 进度 + 字号 ± + 设置⚙ + 目录☰",
+                "WebView2 — 阅读内容区域（DefaultBackgroundColor=Transparent 卡片效果）",
+                "目录面板 — ItemsControl + 递归 DataTemplate（Chapter→ItemsControl→Chapter 无限层级树）",
+                "设置面板 — 主题圈 + 字号 + 字体 + 行间距 + 页宽 + 快捷键提示"
+            ],
+            "styles": [
+                "TocItemStyle（目录按钮：左竖条指示器+悬浮高亮）",
+                "OptionButtonStyle（设置选项：选中态强调色）",
+                "ReaderButtonStyle（通用工具栏按钮）",
+                "ThemeCircleStyle（3色圈主题选择器）",
+                "ModernScrollBarThumb（细圆角滚动条）"
+            ]
+        },
+        {
+            "name": "ReaderPage.xaml.cs",
+            "purpose": "WebView2 交互核心（约1200行）",
+            "initialization": [
+                "EnsureWebView2Environment() — 自定义用户数据目录",
+                "OnWebViewReady — 设置脚本/web消息/DefaultBackgroundColor + 兜底定时器"
+            ],
+            "event_handlers": [
+                "OnNavigationStarting — 拦截超链接：外部→系统浏览器，内部→ViewModel导航",
+                "OnWebMessageReceived — 消息协议 '<type>|<payload>'：link/hl-create/hl-note/hl-note-edit/hl-delete/hl-refresh/hl-bar-show/hl-bar-hide",
+                "OnPageKeyDown — 快捷键：←→上下章, ESC/F11 关闭面板"
+            ],
+            "js_injection": [
+                "InjectLinkInterceptorAsync — 拦截 a 标签点击，postMessage 通知宿主",
+                "InjectHighlightScriptAsync — 完整高亮笔记交互系统（约650行JS）"
+            ],
+            "highlight_script_capabilities": [
+                "选区检测 → 弹出浮动操作栏（5色高亮+下划线+笔记+复制）",
+                "笔记输入面板（textarea + 样式选择器 + 编辑/删除）",
+                "全局交互锁（浮窗显示期间禁用滚动/右键/选择/双击/拖拽）",
+                "TreeWalker 遍历文本节点定位全局字符偏移",
+                "渲染/删除/更新高亮 DOM",
+                "带批注标注的红波浪线标识"
+            ],
+            "theme_management": [
+                "ApplyThemeResources(ReaderUITheme) — 更新 Page.Resources 中所有 DynamicResource 画刷",
+                "LightenColor/DarkenColor 辅助方法"
+            ]
+        }
+    ],
+    "main_flow": {
+        "startup": "App.OnStartup() → 创建 AppDataDir + coversDir → 初始化 SQLite(3张表+迁移) → 创建4个服务 → 创建 MainWindow",
+        "bookshelf": "MainWindow.OnLoaded → NavigateToBookshelf → BookshelfPage + BookshelfViewModel",
+        "book_operations": [
+            "导入：OpenFileDialog/拖拽/文件夹 → EpubParser.Parse → 缓存封面到文件 → SQLite AddBook → UI Insert",
+            "删除：确认弹窗 → SQLite RemoveBook(含封面清理) → UI Remove",
+            "搜索：SearchText → ICollectionView.Filter 实时过滤"
+        ],
+        "reading": {
+            "step1": "点击卡片 → OnOpenBookRequested → 文件存在性检查",
+            "step2": "创建 ReaderViewModel + ReaderPage → 订阅事件",
+            "step3": "ReaderViewModel.LoadBook: 加载设置→解析EPUB→章节树→恢复上次阅读位置或第一章",
+            "step4": "ReaderViewModel.NavigateToChapter: 多文件拼接→提取body→生成阅读HTML→ContentRequested",
+            "step5": "ReaderPage 渲染 HTML+注入JS脚本+恢复高亮+应用样式"
+        },
+        "reading_interactions": [
+            "导航：←→键/按钮 按spine文件跳转；目录面板点击跳转；超链接点击→拦截导航→NavigateToHref",
+            "设置：实时动态CSS注入（无页面重载）→设置自动保存到SQLite",
+            "高亮：选区→浮动工具栏→点击高亮/下划线/笔记→postMessage→ViewModel→SQLite→重新渲染",
+            "进度：切换章节时 ProgressChanged 事件→持久化到SQLite+同步内存Book对象"
+        ]
+    },
+    "key_design_decisions": [
+        {
+            "title": "高亮笔记采用全局字符偏移定位",
+            "description": "通过遍历 .reading-card 内所有文本节点累加字符长度（TreeWalker），不依赖 CSS 选择器或 DOM 路径，避免因 EPUB 结构变化导致的定位失效。每个 Note 记录 startOffset/endOffset + selectedText 用于校验。"
+        },
+        {
+            "title": "支持多文件章节拼接",
+            "description": "一个逻辑章节可能跨多个 spine 文件。ReaderViewModel.ComputeFullContentFiles 从当前文件开始，依次加载后续文件直到遇到下一个目录条目对应的文件，然后将各文件的 <body> 内容拼接为一个完整章节。"
+        },
+        {
+            "title": "ZIP 路径查找多层容错",
+            "description": "EpubParser.FindEntry 尝试 5 级候选路径（basePath+href→去除前缀→清理斜杠→仅文件名），最后遍历 ZIP 条目做不区分大小写的兜底匹配。"
+        },
+        {
+            "title": "WPF 隐式递归实现目录树",
+            "description": "ReaderPage.xaml 中定义 DataTemplate DataType=Chapter，内部使用 ItemsControl ItemsSource={Binding Children} 不指定 ItemTemplate，WPF 按 DataType 自动递归应用同一模板，支持任意深度的章节嵌套。"
+        },
+        {
+            "title": "双系统主题同步",
+            "description": "ReaderUITheme.Build(ThemeType) 生成 18 个颜色属性的 record。ReaderPage.xaml.cs 的 ApplyThemeResources 将配色同步到 WPF 画刷资源（DynamicResource），HTML 渲染时也嵌入相同配色。"
+        },
+        {
+            "title": "SQLite 渐进式列迁移",
+            "description": "旧版数据库（如缺少 TotalChapters 列、Style/Comment 列）通过 ALTER TABLE ADD COLUMN + try-catch 静默忽略已存在列的方式平滑升级。Note 表旧版 CSS 选择器定位结构自动检测并删表重建。"
+        },
+        {
+            "title": "WebView2 JS-C# 双通道通信",
+            "description": "使用 postMessage + NavigationStarting 双通道捕获用户操作。JS 内 postMessage 传递类型前缀消息（link|/hl-create|/hl-delete| 等），C# 端解析分派。"
+        },
+        {
+            "title": "高亮浮窗交互锁",
+            "description": "浮动高亮操作栏显示期间，JS 全局拦截 mousedown/keydown/wheel/contextmenu/dblclick/selectstart/dragstart，同时 C# 端设置 IsToolbarEnabled=false 禁用工具栏和面板，确保用户只能操作浮窗或点击外部取消。"
+        }
+    ]
+}
